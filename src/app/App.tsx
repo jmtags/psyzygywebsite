@@ -8,10 +8,11 @@ import { Ethics } from './components/Ethics';
 import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
 import { ScrollToTop } from './components/ScrollToTop';
+import { StickyMobileContactBar } from './components/StickyMobileContactBar';
 
 export default function App() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pb-20 md:pb-0">
       <Navigation />
       <Hero />
       <About />
@@ -22,6 +23,7 @@ export default function App() {
       <Contact />
       <Footer />
       <ScrollToTop />
+      <StickyMobileContactBar />
     </div>
   );
 }

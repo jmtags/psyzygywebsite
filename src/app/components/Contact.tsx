@@ -1,4 +1,4 @@
-import { MapPin, Phone, Mail } from 'lucide-react';
+import { MapPin, Phone, Mail, ExternalLink } from 'lucide-react';
 
 const contacts = [
   {
@@ -9,6 +9,7 @@ const contacts = [
       { icon: Phone, text: '0931 203 7963', link: 'tel:09312037963' },
       { icon: Mail, text: 'psyzygymabalacat@psyzygyclinic.com', link: 'mailto:psyzygymabalacat@psyzygyclinic.com' },
       { icon: Mail, text: 'psyzygymabalacat@gmail.com', link: 'mailto:psyzygymabalacat@gmail.com' },
+      { icon: ExternalLink, text: 'Facebook page', link: 'https://web.facebook.com/PsyzygyMabalacat', external: true },
     ],
   },
   {
@@ -19,6 +20,7 @@ const contacts = [
       { icon: Phone, text: '0931 203 7962', link: 'tel:09312037962' },
       { icon: Mail, text: 'psyzygytarlac@psyzygyclinic.com', link: 'mailto:psyzygytarlac@psyzygyclinic.com' },
       { icon: Mail, text: 'psyzygypsychcenter@gmail.com', link: 'mailto:psyzygypsychcenter@gmail.com' },
+      { icon: ExternalLink, text: 'Facebook page', link: 'https://web.facebook.com/psyzygy', external: true },
     ],
   },
   {
@@ -29,6 +31,7 @@ const contacts = [
       { icon: Phone, text: '0949 869 2264', link: 'tel:09498692264' },
       { icon: Mail, text: 'psyzygycalapan@psyzygyclinic.com', link: 'mailto:psyzygycalapan@psyzygyclinic.com' },
       { icon: Mail, text: 'psyzygycalapan@gmail.com', link: 'mailto:psyzygycalapan@gmail.com' },
+      { icon: ExternalLink, text: 'Facebook page', link: 'https://web.facebook.com/PsyzygyCalapan', external: true },
     ],
   },
 ];
@@ -110,6 +113,8 @@ export function Contact() {
                       {detail.link ? (
                         <a
                           href={detail.link}
+                          target={detail.external ? '_blank' : undefined}
+                          rel={detail.external ? 'noreferrer' : undefined}
                           className="text-sm text-foreground/65 hover:text-primary transition-colors font-light break-all leading-snug"
                           style={{ fontFamily: 'var(--font-body)' }}
                         >

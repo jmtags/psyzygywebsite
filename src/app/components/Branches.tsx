@@ -1,4 +1,4 @@
-import { MapPin, Phone, Mail, ArrowRight } from 'lucide-react';
+import { MapPin, Phone, Mail, ArrowRight, ExternalLink } from 'lucide-react';
 
 const branches = [
   {
@@ -8,6 +8,7 @@ const branches = [
     mapQuery: 'PSYZYGY Psychological Center Mabalacat 15.2449761,120.5636047',
     phone: '0931 203 7963',
     emails: ['psyzygymabalacat@psyzygyclinic.com', 'psyzygymabalacat@gmail.com'],
+    facebookUrl: 'https://web.facebook.com/PsyzygyMabalacat',
     index: '01',
   },
   {
@@ -17,6 +18,7 @@ const branches = [
     mapQuery: 'PSYZYGY Psychological Center Tarlac 15.454903,120.5997814',
     phone: '0931 203 7962',
     emails: ['psyzygytarlac@psyzygyclinic.com', 'psyzygypsychcenter@gmail.com'],
+    facebookUrl: 'https://web.facebook.com/psyzygy',
     index: '02',
   },
   {
@@ -26,6 +28,7 @@ const branches = [
     address: 'Mahogany St., Brgy. Sto. Niño, Calapan City, Philippines',
     phone: '0949 869 2264',
     emails: ['psyzygycalapan@psyzygyclinic.com', 'psyzygycalapan@gmail.com'],
+    facebookUrl: 'https://web.facebook.com/PsyzygyCalapan',
     index: '03',
   },
 ];
@@ -131,6 +134,18 @@ export function Branches() {
                       </a>
                     ))}
                   </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <ExternalLink className="w-4 h-4 text-primary/50 flex-shrink-0" strokeWidth={1.5} />
+                  <a
+                    href={branch.facebookUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm text-foreground/65 hover:text-primary transition-colors font-light"
+                    style={{ fontFamily: 'var(--font-body)' }}
+                  >
+                    Facebook page
+                  </a>
                 </div>
               </div>
 

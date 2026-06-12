@@ -8,9 +8,9 @@ const navLinks = [
 ];
 
 const branches = [
-  { name: 'Pampanga (Mabalacat)', emails: ['psyzygymabalacat@psyzygyclinic.com', 'psyzygymabalacat@gmail.com'], phone: '0931 203 7963' },
-  { name: 'Tarlac City', emails: ['psyzygytarlac@psyzygyclinic.com', 'psyzygypsychcenter@gmail.com'], phone: '0931 203 7962' },
-  { name: 'Calapan City', emails: ['psyzygycalapan@psyzygyclinic.com', 'psyzygycalapan@gmail.com'], phone: '0949 869 2264' },
+  { name: 'Pampanga (Mabalacat)', emails: ['psyzygymabalacat@psyzygyclinic.com', 'psyzygymabalacat@gmail.com'], phone: '0931 203 7963', facebookUrl: 'https://web.facebook.com/PsyzygyMabalacat' },
+  { name: 'Tarlac City', emails: ['psyzygytarlac@psyzygyclinic.com', 'psyzygypsychcenter@gmail.com'], phone: '0931 203 7962', facebookUrl: 'https://web.facebook.com/psyzygy' },
+  { name: 'Calapan City', emails: ['psyzygycalapan@psyzygyclinic.com', 'psyzygycalapan@gmail.com'], phone: '0949 869 2264', facebookUrl: 'https://web.facebook.com/PsyzygyCalapan' },
 ];
 
 export function Footer() {
@@ -115,6 +115,15 @@ export function Footer() {
                       {email}
                     </a>
                   ))}
+                  <a
+                    href={branch.facebookUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block text-xs text-white/35 hover:text-white/60 transition-colors font-light"
+                    style={{ fontFamily: 'var(--font-body)' }}
+                  >
+                    Facebook page
+                  </a>
                 </li>
               ))}
             </ul>
