@@ -60,40 +60,12 @@ export function TrustSignals() {
               <em className="italic text-primary">through care.</em>
             </h2>
             <p
-              className="text-sm text-foreground/60 leading-relaxed font-light mb-8 max-w-md"
+              className="text-sm text-foreground/60 leading-relaxed font-light max-w-md"
               style={{ fontFamily: 'var(--font-body)' }}
             >
               PSYZYGY Psychological Center, Inc. centers every service on credible practice,
               compassionate support, and ethical mental health care.
             </p>
-
-            <div className="rounded-lg border border-primary/15 bg-white p-6">
-              <p
-                className="text-[10px] tracking-[0.18em] uppercase text-primary/60 font-semibold mb-3"
-                style={{ fontFamily: 'var(--font-body)' }}
-              >
-                Professional Leadership
-              </p>
-              <h3
-                className="text-2xl font-normal text-foreground mb-2"
-                style={{ fontFamily: 'var(--font-display)' }}
-              >
-                Dr. Josevy A. Taguibao
-              </h3>
-              <p
-                className="text-sm font-semibold text-primary tracking-wide mb-3"
-                style={{ fontFamily: 'var(--font-body)' }}
-              >
-                RPsy, RGC, LPT
-              </p>
-              <p
-                className="text-sm text-foreground/60 leading-relaxed font-light"
-                style={{ fontFamily: 'var(--font-body)' }}
-              >
-                The center's care is guided by professional experience, heart-centered service,
-                and a commitment to responsible psychological practice.
-              </p>
-            </div>
           </div>
 
           <div className="space-y-6">
