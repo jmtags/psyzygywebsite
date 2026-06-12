@@ -1,6 +1,7 @@
 import { Navigation } from './components/Navigation';
 import { Hero } from './components/Hero';
 import { About } from './components/About';
+import { TrustSignals } from './components/TrustSignals';
 import { Services } from './components/Services';
 import { VisionMissionValues } from './components/VisionMissionValues';
 import { Branches } from './components/Branches';
@@ -16,6 +17,7 @@ export default function App() {
       <Navigation />
       <Hero />
       <About />
+      <TrustSignals />
       <Services />
       <VisionMissionValues />
       <Branches />
