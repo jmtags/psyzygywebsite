@@ -5,6 +5,7 @@ const branches = [
     name: 'Pampanga',
     city: 'Mabalacat City',
     address: 'Bldg 1, Unit 16, Xevera Plaza, Mabalacat City',
+    mapQuery: 'Bldg 1 Unit 16 Xevera Plaza Mabalacat City Pampanga Philippines',
     phone: '0931 203 7963',
     emails: ['psyzygymabalacat@psyzygyclinic.com', 'psyzygymabalacat@gmail.com'],
     index: '01',
@@ -13,6 +14,7 @@ const branches = [
     name: 'Tarlac',
     city: 'Tarlac City',
     address: '2nd Floor MAQS Business Center, San Rafael, Tarlac City',
+    mapQuery: 'MAQS Business Center San Rafael Tarlac City Philippines',
     phone: '0931 203 7962',
     emails: ['psyzygytarlac@psyzygyclinic.com', 'psyzygypsychcenter@gmail.com'],
     index: '02',
@@ -20,6 +22,7 @@ const branches = [
   {
     name: 'Calapan',
     city: 'Calapan City, Mindoro',
+    mapQuery: 'Mahogany Street Barangay Sto. Nino Calapan City Oriental Mindoro Philippines',
     address: 'Mahogany St., Brgy. Sto. Niño, Calapan City, Philippines',
     phone: '0949 869 2264',
     emails: ['psyzygycalapan@psyzygyclinic.com', 'psyzygycalapan@gmail.com'],
@@ -129,6 +132,17 @@ export function Branches() {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              {/* Map */}
+              <div className="mt-6 overflow-hidden rounded-lg border border-border bg-secondary aspect-[4/3]">
+                <iframe
+                  title={`Google Map for Psyzygy ${branch.name}`}
+                  src={`https://www.google.com/maps?q=${encodeURIComponent(branch.mapQuery)}&output=embed`}
+                  className="h-full w-full"
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
               </div>
 
               {/* CTA */}
