@@ -7,6 +7,7 @@ const contacts = [
     details: [
       { icon: MapPin, text: 'Bldg 1, Unit 16, Xevera Plaza, Mabalacat City' },
       { icon: Phone, text: '0931 203 7963', link: 'tel:09312037963' },
+      { icon: Mail, text: 'psyzygymabalacat@psyzygyclinic.com', link: 'mailto:psyzygymabalacat@psyzygyclinic.com' },
       { icon: Mail, text: 'psyzygymabalacat@gmail.com', link: 'mailto:psyzygymabalacat@gmail.com' },
     ],
   },
@@ -16,6 +17,7 @@ const contacts = [
     details: [
       { icon: MapPin, text: '2nd Floor MAQS Business Center, San Rafael, Tarlac City' },
       { icon: Phone, text: '0931 203 7962', link: 'tel:09312037962' },
+      { icon: Mail, text: 'psyzygytarlac@psyzygyclinic.com', link: 'mailto:psyzygytarlac@psyzygyclinic.com' },
       { icon: Mail, text: 'psyzygypsychcenter@gmail.com', link: 'mailto:psyzygypsychcenter@gmail.com' },
     ],
   },
@@ -25,6 +27,7 @@ const contacts = [
     details: [
       { icon: MapPin, text: 'Mahogany St., Brgy. Sto. Niño, Calapan City, Philippines' },
       { icon: Phone, text: '0949 869 2264', link: 'tel:09498692264' },
+      { icon: Mail, text: 'psyzygycalapan@psyzygyclinic.com', link: 'mailto:psyzygycalapan@psyzygyclinic.com' },
       { icon: Mail, text: 'psyzygycalapan@gmail.com', link: 'mailto:psyzygycalapan@gmail.com' },
     ],
   },

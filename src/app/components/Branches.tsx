@@ -6,7 +6,7 @@ const branches = [
     city: 'Mabalacat City',
     address: 'Bldg 1, Unit 16, Xevera Plaza, Mabalacat City',
     phone: '0931 203 7963',
-    email: 'psyzygymabalacat@gmail.com',
+    emails: ['psyzygymabalacat@psyzygyclinic.com', 'psyzygymabalacat@gmail.com'],
     index: '01',
   },
   {
@@ -14,7 +14,7 @@ const branches = [
     city: 'Tarlac City',
     address: '2nd Floor MAQS Business Center, San Rafael, Tarlac City',
     phone: '0931 203 7962',
-    email: 'psyzygypsychcenter@gmail.com',
+    emails: ['psyzygytarlac@psyzygyclinic.com', 'psyzygypsychcenter@gmail.com'],
     index: '02',
   },
   {
@@ -22,7 +22,7 @@ const branches = [
     city: 'Calapan City, Mindoro',
     address: 'Mahogany St., Brgy. Sto. Niño, Calapan City, Philippines',
     phone: '0949 869 2264',
-    email: 'psyzygycalapan@gmail.com',
+    emails: ['psyzygycalapan@psyzygyclinic.com', 'psyzygycalapan@gmail.com'],
     index: '03',
   },
 ];
@@ -114,22 +114,27 @@ export function Branches() {
                     {branch.phone}
                   </a>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-start gap-3">
                   <Mail className="w-4 h-4 text-primary/50 flex-shrink-0" strokeWidth={1.5} />
-                  <a
-                    href={`mailto:${branch.email}`}
-                    className="text-xs text-foreground/65 hover:text-primary transition-colors break-all font-light"
-                    style={{ fontFamily: 'var(--font-body)' }}
-                  >
-                    {branch.email}
-                  </a>
+                  <div className="space-y-1">
+                    {branch.emails.map((email) => (
+                      <a
+                        key={email}
+                        href={`mailto:${email}`}
+                        className="block text-xs text-foreground/65 hover:text-primary transition-colors break-all font-light"
+                        style={{ fontFamily: 'var(--font-body)' }}
+                      >
+                        {email}
+                      </a>
+                    ))}
+                  </div>
                 </div>
               </div>
 
               {/* CTA */}
               <div className="mt-8 pt-6 border-t border-border">
                 <a
-                  href={`mailto:${branch.email}`}
+                  href={`mailto:${branch.emails[0]}`}
                   className="group/link inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/70 transition-colors"
                   style={{ fontFamily: 'var(--font-body)' }}
                 >

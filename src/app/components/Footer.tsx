@@ -8,9 +8,9 @@ const navLinks = [
 ];
 
 const branches = [
-  { name: 'Pampanga (Mabalacat)', email: 'psyzygymabalacat@gmail.com', phone: '0931 203 7963' },
-  { name: 'Tarlac City', email: 'psyzygypsychcenter@gmail.com', phone: '0931 203 7962' },
-  { name: 'Calapan City', email: 'psyzygycalapan@gmail.com', phone: '0949 869 2264' },
+  { name: 'Pampanga (Mabalacat)', emails: ['psyzygymabalacat@psyzygyclinic.com', 'psyzygymabalacat@gmail.com'], phone: '0931 203 7963' },
+  { name: 'Tarlac City', emails: ['psyzygytarlac@psyzygyclinic.com', 'psyzygypsychcenter@gmail.com'], phone: '0931 203 7962' },
+  { name: 'Calapan City', emails: ['psyzygycalapan@psyzygyclinic.com', 'psyzygycalapan@gmail.com'], phone: '0949 869 2264' },
 ];
 
 export function Footer() {
@@ -105,13 +105,16 @@ export function Footer() {
                   >
                     {branch.phone}
                   </a>
-                  <a
-                    href={`mailto:${branch.email}`}
-                    className="block text-xs text-white/35 hover:text-white/60 transition-colors font-light break-all"
-                    style={{ fontFamily: 'var(--font-body)' }}
-                  >
-                    {branch.email}
-                  </a>
+                  {branch.emails.map((email) => (
+                    <a
+                      key={email}
+                      href={`mailto:${email}`}
+                      className="block text-xs text-white/35 hover:text-white/60 transition-colors font-light break-all"
+                      style={{ fontFamily: 'var(--font-body)' }}
+                    >
+                      {email}
+                    </a>
+                  ))}
                 </li>
               ))}
             </ul>
