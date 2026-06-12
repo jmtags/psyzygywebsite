@@ -164,7 +164,7 @@ export function Services() {
             className="text-xs text-foreground/40 leading-relaxed italic"
             style={{ fontFamily: 'var(--font-body)' }}
           >
-            All services are provided in accordance with professional ethical standards and Philippine PRC guidelines.
+            All services are provided in accordance with professional ethical standards.
             We do not make diagnostic claims or treatment guarantees through this website.
           </p>
         </div>

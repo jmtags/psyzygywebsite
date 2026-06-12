@@ -69,7 +69,7 @@ export function Hero() {
             {[
               { value: '10+', label: 'Years of Service' },
               { value: '3', label: 'Branch Locations' },
-              { value: 'PRC', label: 'Licensed & Registered' },
+              { value: 'Care', label: 'Ethical Practice' },
             ].map((stat) => (
               <div key={stat.label}>
                 <div

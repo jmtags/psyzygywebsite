@@ -13,8 +13,8 @@ export function About() {
     },
     {
       icon: ShieldCheck,
-      label: 'PRC-Registered',
-      detail: 'Fully licensed and compliant with the Professional Regulation Commission and Philippine psychological standards.',
+      label: 'Professional Care',
+      detail: 'Services are guided by professional psychological standards, confidentiality, and ethical practice.',
     },
   ];
 

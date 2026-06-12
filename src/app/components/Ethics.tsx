@@ -19,7 +19,7 @@ const principles = [
   {
     icon: CircleCheck,
     title: 'Regulatory Compliance',
-    description: 'PSYZYGY operates with full compliance to Philippine laws, PRC regulations, and professional psychological standards.',
+    description: 'PSYZYGY operates with respect for Philippine laws, ethical guidelines, and professional psychological standards.',
   },
 ];
 

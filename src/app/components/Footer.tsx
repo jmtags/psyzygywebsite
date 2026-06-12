@@ -50,12 +50,6 @@ export function Footer() {
             >
               Your Mental Health Care with a Heart. Serving Central Luzon and Mindoro since 2015.
             </p>
-            <p
-              className="text-xs text-white/30 font-light leading-relaxed max-w-xs"
-              style={{ fontFamily: 'var(--font-body)' }}
-            >
-              Licensed by the Professional Regulation Commission (PRC). All services provided by qualified psychologists.
-            </p>
           </div>
 
           {/* Quick links */}

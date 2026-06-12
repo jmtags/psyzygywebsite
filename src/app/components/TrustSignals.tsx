@@ -15,8 +15,8 @@ const trustSignals = [
   },
   {
     icon: ShieldCheck,
-    value: 'PRC',
-    label: 'Licensed Care',
+    value: 'Care',
+    label: 'Ethical Practice',
     detail: 'Services are handled in line with professional standards and ethical practice.',
   },
 ];
