@@ -28,11 +28,23 @@ Browser-safe user management:
 - Editing users updates `public.user_profiles`.
 - Do not expose a Supabase service-role key in Vercel or browser code.
 
-Deploy the Edge Function:
+Deploy the Edge Functions:
+
+Edge Functions cannot be created by a Postgres migration; deploy them with the Supabase CLI.
 
 ```bash
 supabase functions deploy admin-create-user
 supabase functions deploy track-page-view
+```
+
+Or run one of the included scripts:
+
+```powershell
+.\supabase\deploy-functions.ps1
+```
+
+```bash
+bash supabase/deploy-functions.sh
 ```
 
 Required Edge Function secrets:
