@@ -6,6 +6,5 @@ supabase functions deploy admin-create-user
 supabase functions deploy track-page-view
 
 echo
-echo "If secrets are not set yet, run:"
-echo 'supabase secrets set SUPABASE_URL="..." SUPABASE_ANON_KEY="..." SUPABASE_SERVICE_ROLE_KEY="..."'
+echo "Do not manually set SUPABASE_* secrets; Supabase provides those defaults to Edge Functions."
 echo "Done."

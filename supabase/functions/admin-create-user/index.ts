@@ -12,8 +12,8 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    const serviceRoleKey = getSecretKey();
+    const anonKey = getPublishableKey();
 
     if (!supabaseUrl || !serviceRoleKey || !anonKey) {
       throw new Error('Missing Supabase function secrets.');
@@ -95,4 +95,34 @@ function json(payload: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+function getPublishableKey() {
+  const legacyKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (legacyKey) return legacyKey;
+
+  const publishableKeys = Deno.env.get('SUPABASE_PUBLISHABLE_KEYS');
+  if (!publishableKeys) return null;
+
+  try {
+    const parsed = JSON.parse(publishableKeys);
+    return parsed.default ?? Object.values(parsed)[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function getSecretKey() {
+  const legacyKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (legacyKey) return legacyKey;
+
+  const secretKeys = Deno.env.get('SUPABASE_SECRET_KEYS');
+  if (!secretKeys) return null;
+
+  try {
+    const parsed = JSON.parse(secretKeys);
+    return parsed.default ?? Object.values(parsed)[0] ?? null;
+  } catch {
+    return null;
+  }
 }

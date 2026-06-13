@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const serviceRoleKey = getSecretKey();
 
     if (!supabaseUrl || !serviceRoleKey) {
       throw new Error('Missing Supabase function secrets.');
@@ -96,4 +96,19 @@ function getLocation(req: Request, body: Record<string, unknown>) {
     region: nullableText(req.headers.get('x-vercel-ip-country-region') || body.region, 120),
     city: nullableText(req.headers.get('x-vercel-ip-city') || body.city, 120),
   };
+}
+
+function getSecretKey() {
+  const legacyKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (legacyKey) return legacyKey;
+
+  const secretKeys = Deno.env.get('SUPABASE_SECRET_KEYS');
+  if (!secretKeys) return null;
+
+  try {
+    const parsed = JSON.parse(secretKeys);
+    return parsed.default ?? Object.values(parsed)[0] ?? null;
+  } catch {
+    return null;
+  }
 }

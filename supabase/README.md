@@ -47,14 +47,10 @@ Or run one of the included scripts:
 bash supabase/deploy-functions.sh
 ```
 
-Required Edge Function secrets:
+Do not manually add secrets that start with `SUPABASE_`. Supabase reserves that prefix and provides the required project URL and API keys to Edge Functions automatically.
+
+The functions read Supabase's built-in defaults:
 
 - `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-
-Set secrets with:
-
-```bash
-supabase secrets set SUPABASE_URL=... SUPABASE_ANON_KEY=... SUPABASE_SERVICE_ROLE_KEY=...
-```
+- `SUPABASE_PUBLISHABLE_KEYS` or legacy `SUPABASE_ANON_KEY`
+- `SUPABASE_SECRET_KEYS` or legacy `SUPABASE_SERVICE_ROLE_KEY`
