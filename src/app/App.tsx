@@ -13,6 +13,7 @@ import { Footer } from './components/Footer';
 import { ScrollToTop } from './components/ScrollToTop';
 import { StickyMobileContactBar } from './components/StickyMobileContactBar';
 import { FloatingEventsCarousel } from './components/FloatingEventsCarousel';
+import { PageViewTracker } from './components/PageViewTracker';
 
 const AdminApp = lazy(() => import('./admin/AdminApp').then((module) => ({ default: module.AdminApp })));
 
@@ -27,6 +28,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen pb-20 md:pb-0">
+      <PageViewTracker />
       <Navigation />
       <Hero />
       <About />

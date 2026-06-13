@@ -32,6 +32,7 @@ Deploy the Edge Function:
 
 ```bash
 supabase functions deploy admin-create-user
+supabase functions deploy track-page-view
 ```
 
 Required Edge Function secrets:

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   Award,
+  ChartNoAxesColumn,
   Building2,
   Camera,
   CheckCircle2,
@@ -24,7 +26,7 @@ import { generateOjtCertificatePdf } from '../lib/certificatePdf';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 
 type AdminRole = 'super_admin' | 'clinic_admin' | 'staff';
-type TabKey = 'overview' | 'events' | 'ojt' | 'certificates' | 'clinics' | 'users';
+type TabKey = 'overview' | 'analytics' | 'events' | 'ojt' | 'certificates' | 'clinics' | 'users';
 type OjtStatus = 'active' | 'completed' | 'withdrawn';
 
 type Clinic = {
@@ -75,8 +77,20 @@ type EventAlbum = {
   event_photos?: EventPhoto[];
 };
 
+type PageVisit = {
+  id: string;
+  path: string;
+  device_type: 'mobile' | 'tablet' | 'desktop';
+  country: string | null;
+  region: string | null;
+  city: string | null;
+  timezone: string | null;
+  visited_at: string;
+};
+
 const tabs: Array<{ key: TabKey; label: string; icon: LucideIcon; superOnly?: boolean }> = [
   { key: 'overview', label: 'Overview', icon: Award },
+  { key: 'analytics', label: 'Analytics', icon: ChartNoAxesColumn, superOnly: true },
   { key: 'events', label: 'Events', icon: Camera },
   { key: 'ojt', label: 'OJT', icon: School },
   { key: 'certificates', label: 'Certificates', icon: Download },
@@ -93,6 +107,7 @@ export function AdminApp() {
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [eventAlbums, setEventAlbums] = useState<EventAlbum[]>([]);
+  const [pageVisits, setPageVisits] = useState<PageVisit[]>([]);
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [selectedClinicId, setSelectedClinicId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -219,6 +234,21 @@ export function AdminApp() {
       }
 
       setProfiles((profileRows ?? []) as Profile[]);
+
+      const since = new Date();
+      since.setDate(since.getDate() - 90);
+      const { data: visitRows, error: visitsError } = await supabase
+        .from('page_visits')
+        .select('id, path, device_type, country, region, city, timezone, visited_at')
+        .gte('visited_at', since.toISOString())
+        .order('visited_at', { ascending: false })
+        .limit(5000);
+
+      if (visitsError) {
+        setNotice(visitsError.message);
+      }
+
+      setPageVisits((visitRows ?? []) as PageVisit[]);
     }
 
     setLoading(false);
@@ -586,6 +616,10 @@ export function AdminApp() {
             </div>
           )}
 
+          {activeTab === 'analytics' && isSuperAdmin && (
+            <AnalyticsPanel visits={pageVisits} />
+          )}
+
           {activeTab === 'events' && (
             <Panel title="Event Photo Upload" subtitle="Create event albums and upload photos by clinic.">
               <div className="grid gap-4 lg:grid-cols-2">
@@ -763,6 +797,83 @@ function Metric({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-border bg-white p-6">
       <p className="text-3xl font-semibold text-primary" style={{ fontFamily: 'var(--font-display)' }}>{value}</p>
       <p className="mt-2 text-sm font-medium text-foreground/60">{label}</p>
+    </div>
+  );
+}
+
+function AnalyticsPanel({ visits }: { visits: PageVisit[] }) {
+  const dailyTrend = buildDailyTrend(visits);
+  const deviceData = buildCountData(visits.map((visit) => visit.device_type || 'unknown'));
+  const locationData = buildCountData(visits.map((visit) => formatVisitLocation(visit))).slice(0, 8);
+  const topPages = buildCountData(visits.map((visit) => visit.path || '/')).slice(0, 8);
+  const mobileCount = visits.filter((visit) => visit.device_type === 'mobile' || visit.device_type === 'tablet').length;
+  const desktopCount = visits.filter((visit) => visit.device_type === 'desktop').length;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-4">
+        <Metric label="Visits, Last 90 Days" value={String(visits.length)} />
+        <Metric label="Mobile / Tablet" value={String(mobileCount)} />
+        <Metric label="Desktop" value={String(desktopCount)} />
+        <Metric label="Locations" value={String(locationData.length)} />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.4fr_0.9fr]">
+        <Panel title="Visit Trend" subtitle="Daily page views based on recorded visit dates.">
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={dailyTrend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.08)" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Line type="monotone" dataKey="visits" stroke="rgb(31,89,105)" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Panel>
+
+        <Panel title="Device Type" subtitle="Mobile, tablet, and desktop breakdown.">
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={deviceData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.08)" />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Bar dataKey="count" fill="rgb(31,89,105)" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Panel>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Panel title="Top Locations" subtitle="Best available location from edge/browser signals.">
+          <AnalyticsList items={locationData} emptyText="No location data yet." />
+        </Panel>
+
+        <Panel title="Top Pages" subtitle="Most viewed paths on the website.">
+          <AnalyticsList items={topPages} emptyText="No page views yet." />
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function AnalyticsList({ items, emptyText }: { items: Array<{ name: string; count: number }>; emptyText: string }) {
+  if (items.length === 0) {
+    return <p className="text-sm text-foreground/55">{emptyText}</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.map((item) => (
+        <div key={item.name} className="flex items-center justify-between gap-4 rounded-lg bg-[#f7f4f0] px-4 py-3">
+          <span className="truncate text-sm font-medium text-foreground/70">{item.name}</span>
+          <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-primary">{item.count}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1023,6 +1134,49 @@ function adminClampStyle(lines: number) {
     WebkitBoxOrient: 'vertical',
     overflow: 'hidden',
   } as const;
+}
+
+function buildDailyTrend(visits: PageVisit[]) {
+  const days = new Map<string, number>();
+
+  for (let index = 29; index >= 0; index -= 1) {
+    const date = new Date();
+    date.setDate(date.getDate() - index);
+    days.set(date.toISOString().slice(0, 10), 0);
+  }
+
+  visits.forEach((visit) => {
+    const key = new Date(visit.visited_at).toISOString().slice(0, 10);
+    if (days.has(key)) {
+      days.set(key, (days.get(key) ?? 0) + 1);
+    }
+  });
+
+  return Array.from(days.entries()).map(([date, visitsCount]) => ({
+    date: date.slice(5),
+    visits: visitsCount,
+  }));
+}
+
+function buildCountData(values: string[]) {
+  const counts = new Map<string, number>();
+
+  values.forEach((value) => {
+    const key = value || 'Unknown';
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+
+  return Array.from(counts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+function formatVisitLocation(visit: PageVisit) {
+  const parts = [visit.city, visit.region, visit.country].filter(Boolean);
+  if (parts.length > 0) {
+    return parts.join(', ');
+  }
+  return visit.timezone || 'Unknown';
 }
 
 function TraineeTable({
