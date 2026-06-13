@@ -60,7 +60,7 @@ export function FloatingEventsCarousel() {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-24 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-white shadow-xl md:bottom-6"
+        className="fixed bottom-24 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-white shadow-xl md:bottom-24 md:right-8"
         aria-label="Show latest events"
       >
         <Images className="h-5 w-5" strokeWidth={1.8} />
