@@ -32,7 +32,6 @@ export function FloatingEventsCarousel() {
       .select('id, title, event_date, description, event_photos(id, public_url, caption, sort_order)')
       .eq('is_public', true)
       .order('event_date', { ascending: false })
-      .limit(10)
       .then(({ data }) => setAlbums((data ?? []) as EventAlbum[]));
   }, []);
 

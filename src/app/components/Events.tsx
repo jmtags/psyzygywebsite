@@ -44,7 +44,7 @@ export function Events() {
     }
 
     const timer = window.setInterval(() => {
-      setActiveIndex((current) => (current + 1) % Math.min(albums.length, 10));
+      setActiveIndex((current) => (current + 1) % albums.length);
     }, 4500);
 
     return () => window.clearInterval(timer);
@@ -54,7 +54,7 @@ export function Events() {
     return null;
   }
 
-  const featuredAlbums = albums.slice(0, 10);
+  const featuredAlbums = albums;
   const activeAlbum = featuredAlbums[activeIndex] ?? featuredAlbums[0];
   const activePhotos = getSortedPhotos(activeAlbum);
   const activeCover = activePhotos[0];
