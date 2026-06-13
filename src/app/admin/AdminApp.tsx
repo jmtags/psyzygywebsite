@@ -107,6 +107,7 @@ export function AdminApp() {
   const [editingClinicId, setEditingClinicId] = useState<string | null>(null);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [selectedEventAlbum, setSelectedEventAlbum] = useState<EventAlbum | null>(null);
   const [eventForm, setEventForm] = useState({ title: '', eventDate: '', description: '', isPublic: true });
   const [eventFiles, setEventFiles] = useState<File[]>([]);
 
@@ -642,9 +643,11 @@ export function AdminApp() {
 
               <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {eventAlbums.map((album) => {
-                  const cover = album.event_photos?.find((photo) => photo.public_url);
+                  const photos = getAdminEventPhotos(album);
+                  const cover = photos[0];
                   return (
                     <div key={album.id} className="overflow-hidden rounded-lg border border-border bg-[#f7f4f0]">
+                      <button type="button" onClick={() => setSelectedEventAlbum(album)} className="block w-full text-left">
                       <div className="aspect-[4/3] bg-secondary">
                         {cover?.public_url ? (
                           <img src={cover.public_url} alt={album.title} className="h-full w-full object-cover" />
@@ -652,10 +655,14 @@ export function AdminApp() {
                           <div className="flex h-full items-center justify-center text-foreground/35">No photo</div>
                         )}
                       </div>
-                      <div className="p-4">
-                        <p className="font-semibold text-foreground">{album.title}</p>
+                      <div className="p-4 pb-0">
+                        <p className="font-semibold text-foreground" style={adminClampStyle(1)}>{album.title}</p>
                         <p className="mt-1 text-xs text-foreground/50">{album.event_date || 'No date'} · {album.is_public ? 'Public' : 'Hidden'}</p>
-                        {album.description && <p className="mt-2 text-sm text-foreground/60">{album.description}</p>}
+                        {album.description && <p className="mt-2 text-sm text-foreground/60" style={adminClampStyle(2)}>{album.description}</p>}
+                        <span className="mt-3 inline-block text-xs font-semibold text-primary">View details</span>
+                      </div>
+                      </button>
+                      <div className="p-4">
                         <div className="mt-4 flex gap-2">
                           <button
                             type="button"
@@ -677,6 +684,9 @@ export function AdminApp() {
                   );
                 })}
               </div>
+              {selectedEventAlbum && (
+                <AdminEventDialog album={selectedEventAlbum} onClose={() => setSelectedEventAlbum(null)} />
+              )}
             </Panel>
           )}
 
@@ -956,6 +966,63 @@ function UserCrud({
       </div>
     </Panel>
   );
+}
+
+function AdminEventDialog({ album, onClose }: { album: EventAlbum; onClose: () => void }) {
+  const photos = getAdminEventPhotos(album);
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-foreground/70 p-4" role="dialog" aria-modal="true">
+      <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-lg bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-white px-5 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/60">
+              {album.is_public ? 'Public event' : 'Hidden event'}
+            </p>
+            <h3 className="text-xl font-normal text-foreground" style={{ fontFamily: 'var(--font-display)' }}>
+              {album.title}
+            </h3>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-foreground/60 hover:text-primary" aria-label="Close event preview">
+            x
+          </button>
+        </div>
+        <div className="p-5 lg:p-8">
+          <p className="text-xs text-foreground/45">{album.event_date || 'No event date'}</p>
+          {album.description && (
+            <p className="mt-4 whitespace-pre-line text-base leading-relaxed text-foreground/70" style={{ fontFamily: 'var(--font-body)' }}>
+              {album.description}
+            </p>
+          )}
+          {photos.length > 0 && (
+            <div className="mt-8 grid gap-4 md:grid-cols-2">
+              {photos.map((photo) => (
+                <figure key={photo.id} className="overflow-hidden rounded-lg border border-border bg-[#f7f4f0]">
+                  <img src={photo.public_url!} alt={photo.caption || album.title} className="aspect-[4/3] w-full object-cover" />
+                  {photo.caption && <figcaption className="p-3 text-xs text-foreground/55">{photo.caption}</figcaption>}
+                </figure>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getAdminEventPhotos(album: EventAlbum) {
+  return [...(album.event_photos ?? [])]
+    .filter((photo) => photo.public_url)
+    .sort((a, b) => a.sort_order - b.sort_order);
+}
+
+function adminClampStyle(lines: number) {
+  return {
+    display: '-webkit-box',
+    WebkitLineClamp: lines,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+  } as const;
 }
 
 function TraineeTable({

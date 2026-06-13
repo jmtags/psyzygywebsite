@@ -12,6 +12,7 @@ import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
 import { ScrollToTop } from './components/ScrollToTop';
 import { StickyMobileContactBar } from './components/StickyMobileContactBar';
+import { FloatingEventsCarousel } from './components/FloatingEventsCarousel';
 
 const AdminApp = lazy(() => import('./admin/AdminApp').then((module) => ({ default: module.AdminApp })));
 
@@ -38,6 +39,7 @@ export default function App() {
       <Contact />
       <Footer />
       <ScrollToTop />
+      <FloatingEventsCarousel />
       <StickyMobileContactBar />
     </div>
   );
