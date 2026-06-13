@@ -108,6 +108,8 @@ export function AdminApp() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [eventAlbums, setEventAlbums] = useState<EventAlbum[]>([]);
   const [pageVisits, setPageVisits] = useState<PageVisit[]>([]);
+  const [analyticsUpdatedAt, setAnalyticsUpdatedAt] = useState<Date | null>(null);
+  const [isAnalyticsRefreshing, setIsAnalyticsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [selectedClinicId, setSelectedClinicId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -249,10 +251,50 @@ export function AdminApp() {
       }
 
       setPageVisits((visitRows ?? []) as PageVisit[]);
+      setAnalyticsUpdatedAt(new Date());
     }
 
     setLoading(false);
   };
+
+  const loadAnalyticsData = async () => {
+    if (!supabase || !authUser || !isSuperAdmin) {
+      return;
+    }
+
+    setIsAnalyticsRefreshing(true);
+
+    const since = new Date();
+    since.setDate(since.getDate() - 90);
+    const { data: visitRows, error: visitsError } = await supabase
+      .from('page_visits')
+      .select('id, path, device_type, country, region, city, timezone, visited_at')
+      .gte('visited_at', since.toISOString())
+      .order('visited_at', { ascending: false })
+      .limit(5000);
+
+    if (visitsError) {
+      setNotice(visitsError.message);
+    } else {
+      setPageVisits((visitRows ?? []) as PageVisit[]);
+      setAnalyticsUpdatedAt(new Date());
+    }
+
+    setIsAnalyticsRefreshing(false);
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'analytics' || !isSuperAdmin || !authUser) {
+      return;
+    }
+
+    void loadAnalyticsData();
+    const timer = window.setInterval(() => {
+      void loadAnalyticsData();
+    }, 30000);
+
+    return () => window.clearInterval(timer);
+  }, [activeTab, isSuperAdmin, authUser?.id]);
 
   const login = async () => {
     if (!supabase) {
@@ -617,7 +659,12 @@ export function AdminApp() {
           )}
 
           {activeTab === 'analytics' && isSuperAdmin && (
-            <AnalyticsPanel visits={pageVisits} />
+            <AnalyticsPanel
+              visits={pageVisits}
+              updatedAt={analyticsUpdatedAt}
+              isRefreshing={isAnalyticsRefreshing}
+              onRefresh={loadAnalyticsData}
+            />
           )}
 
           {activeTab === 'events' && (
@@ -801,7 +848,17 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function AnalyticsPanel({ visits }: { visits: PageVisit[] }) {
+function AnalyticsPanel({
+  visits,
+  updatedAt,
+  isRefreshing,
+  onRefresh,
+}: {
+  visits: PageVisit[];
+  updatedAt: Date | null;
+  isRefreshing: boolean;
+  onRefresh: () => void;
+}) {
   const dailyTrend = buildDailyTrend(visits);
   const deviceData = buildCountData(visits.map((visit) => visit.device_type || 'unknown'));
   const locationData = buildCountData(visits.map((visit) => formatVisitLocation(visit))).slice(0, 8);
@@ -811,6 +868,25 @@ function AnalyticsPanel({ visits }: { visits: PageVisit[] }) {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Live analytics data</p>
+          <p className="mt-1 text-sm text-foreground/55">
+            Auto-refreshes every 30 seconds while this tab is open.
+            {updatedAt ? ` Last updated ${updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}.` : ''}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={isRefreshing}
+          className="flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/70 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          {isRefreshing ? 'Refreshing' : 'Refresh Data'}
+        </button>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-4">
         <Metric label="Visits, Last 90 Days" value={String(visits.length)} />
         <Metric label="Mobile / Tablet" value={String(mobileCount)} />
