@@ -21,6 +21,7 @@ export function Events() {
   const [albums, setAlbums] = useState<EventAlbum[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [selectedAlbum, setSelectedAlbum] = useState<EventAlbum | null>(null);
+  const [showAllEvents, setShowAllEvents] = useState(false);
 
   useEffect(() => {
     if (!supabase) {
@@ -57,6 +58,7 @@ export function Events() {
   const activeAlbum = featuredAlbums[activeIndex] ?? featuredAlbums[0];
   const activePhotos = getSortedPhotos(activeAlbum);
   const activeCover = activePhotos[0];
+  const visibleAlbums = showAllEvents ? albums : albums.slice(0, 6);
 
   return (
     <section id="events" className="py-24 lg:py-32 bg-white">
@@ -153,7 +155,7 @@ export function Events() {
         )}
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {albums.map((album) => {
+          {visibleAlbums.map((album) => {
             const photos = getSortedPhotos(album);
             const cover = photos[0];
 
@@ -196,6 +198,19 @@ export function Events() {
             );
           })}
         </div>
+
+        {albums.length > 6 && (
+          <div className="mt-10 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setShowAllEvents((current) => !current)}
+              className="rounded-full border border-primary/25 px-6 py-3 text-sm font-semibold text-primary transition-colors hover:bg-primary hover:text-white"
+              style={{ fontFamily: 'var(--font-body)' }}
+            >
+              {showAllEvents ? 'Show fewer events' : `View all events (${albums.length})`}
+            </button>
+          </div>
+        )}
       </div>
 
       {selectedAlbum && (
