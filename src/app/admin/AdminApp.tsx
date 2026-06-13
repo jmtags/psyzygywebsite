@@ -57,6 +57,23 @@ type Trainee = {
   batchName: string;
 };
 
+type EventPhoto = {
+  id: string;
+  public_url: string | null;
+  caption: string | null;
+  sort_order: number;
+};
+
+type EventAlbum = {
+  id: string;
+  clinic_id: string | null;
+  title: string;
+  event_date: string | null;
+  description: string | null;
+  is_public: boolean;
+  event_photos?: EventPhoto[];
+};
+
 const tabs: Array<{ key: TabKey; label: string; icon: LucideIcon; superOnly?: boolean }> = [
   { key: 'overview', label: 'Overview', icon: Award },
   { key: 'events', label: 'Events', icon: Camera },
@@ -74,6 +91,7 @@ export function AdminApp() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [eventAlbums, setEventAlbums] = useState<EventAlbum[]>([]);
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [selectedClinicId, setSelectedClinicId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -83,8 +101,12 @@ export function AdminApp() {
   const [loginPassword, setLoginPassword] = useState('');
   const [clinicForm, setClinicForm] = useState(emptyClinic);
   const [profileForm, setProfileForm] = useState<Profile>(emptyProfile);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
   const [editingClinicId, setEditingClinicId] = useState<string | null>(null);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const [eventForm, setEventForm] = useState({ title: '', eventDate: '', description: '', isPublic: true });
+  const [eventFiles, setEventFiles] = useState<File[]>([]);
 
   const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [newTrainee, setNewTrainee] = useState({
@@ -172,6 +194,17 @@ export function AdminApp() {
     setClinics(nextClinics);
     setSelectedClinicId((current) => current || normalizedProfile.clinic_id || nextClinics[0]?.id || '');
 
+    const { data: albumRows, error: albumsError } = await supabase
+      .from('event_albums')
+      .select('id, clinic_id, title, event_date, description, is_public, event_photos(id, public_url, caption, sort_order)')
+      .order('event_date', { ascending: false });
+
+    if (albumsError) {
+      setNotice(albumsError.message);
+    }
+
+    setEventAlbums((albumRows ?? []) as EventAlbum[]);
+
     if (normalizedProfile.role === 'super_admin') {
       const { data: profileRows, error: profilesError } = await supabase
         .from('user_profiles')
@@ -255,7 +288,6 @@ export function AdminApp() {
     }
 
     const payload = {
-      id: profileForm.id.trim(),
       full_name: profileForm.full_name.trim(),
       role: profileForm.role,
       clinic_id: profileForm.role === 'super_admin' ? null : profileForm.clinic_id || null,
@@ -264,7 +296,13 @@ export function AdminApp() {
 
     const response = editingProfileId
       ? await supabase.from('user_profiles').update(payload).eq('id', editingProfileId)
-      : await supabase.from('user_profiles').insert(payload);
+      : await supabase.functions.invoke('admin-create-user', {
+        body: {
+          email: newUserEmail,
+          password: newUserPassword,
+          ...payload,
+        },
+      });
 
     if (response.error) {
       setNotice(response.error.message);
@@ -272,7 +310,63 @@ export function AdminApp() {
     }
 
     setProfileForm(emptyProfile);
+    setNewUserEmail('');
+    setNewUserPassword('');
     setEditingProfileId(null);
+    await loadAdminData();
+  };
+
+  const saveEventAlbum = async () => {
+    if (!supabase || !activeClinicId || !eventForm.title.trim()) {
+      return;
+    }
+
+    setNotice('');
+    const { data: album, error: albumError } = await supabase
+      .from('event_albums')
+      .insert({
+        clinic_id: activeClinicId,
+        title: eventForm.title.trim(),
+        event_date: eventForm.eventDate || null,
+        description: eventForm.description.trim() || null,
+        is_public: eventForm.isPublic,
+        created_by: authUser?.id,
+      })
+      .select('id')
+      .single();
+
+    if (albumError || !album) {
+      setNotice(albumError?.message ?? 'Unable to create event album.');
+      return;
+    }
+
+    for (const [index, file] of eventFiles.entries()) {
+      const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '-');
+      const storagePath = `${activeClinicId}/${album.id}/${Date.now()}-${index}-${safeName}`;
+      const { error: uploadError } = await supabase.storage.from('event-photos').upload(storagePath, file);
+
+      if (uploadError) {
+        setNotice(uploadError.message);
+        continue;
+      }
+
+      const { data: publicUrlData } = supabase.storage.from('event-photos').getPublicUrl(storagePath);
+      const { error: photoError } = await supabase.from('event_photos').insert({
+        album_id: album.id,
+        storage_path: storagePath,
+        public_url: publicUrlData.publicUrl,
+        caption: eventForm.title.trim(),
+        sort_order: index,
+        uploaded_by: authUser?.id,
+      });
+
+      if (photoError) {
+        setNotice(photoError.message);
+      }
+    }
+
+    setEventForm({ title: '', eventDate: '', description: '', isPublic: true });
+    setEventFiles([]);
     await loadAdminData();
   };
 
@@ -436,14 +530,63 @@ export function AdminApp() {
           {activeTab === 'events' && (
             <Panel title="Event Photo Upload" subtitle="Create event albums and upload photos by clinic.">
               <div className="grid gap-4 lg:grid-cols-2">
-                <Field label="Event title" placeholder="Mental Health Seminar" />
-                <Field label="Event date" type="date" />
+                <Input label="Event title" value={eventForm.title} onChange={(value) => setEventForm({ ...eventForm, title: value })} />
+                <Input label="Event date" value={eventForm.eventDate} onChange={(value) => setEventForm({ ...eventForm, eventDate: value })} type="date" />
+                <label className="lg:col-span-2 block">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Description</span>
+                  <textarea
+                    value={eventForm.description}
+                    onChange={(event) => setEventForm({ ...eventForm, description: event.target.value })}
+                    className="min-h-24 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={eventForm.isPublic}
+                    onChange={(event) => setEventForm({ ...eventForm, isPublic: event.target.checked })}
+                  />
+                  <span className="text-sm font-medium text-foreground/65">Show on public website</span>
+                </label>
                 <label className="lg:col-span-2 flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-primary/30 bg-primary/5 p-6 text-center">
                   <ImagePlus className="mb-3 h-8 w-8 text-primary" strokeWidth={1.5} />
-                  <span className="text-sm font-semibold text-foreground">Upload event photos</span>
-                  <span className="mt-1 text-xs text-foreground/55">Storage upload wiring is next; bucket and policies are ready.</span>
-                  <input type="file" accept="image/*" multiple className="sr-only" />
+                  <span className="text-sm font-semibold text-foreground">
+                    {eventFiles.length ? `${eventFiles.length} photo(s) selected` : 'Upload event photos'}
+                  </span>
+                  <span className="mt-1 text-xs text-foreground/55">Photos will be stored in Supabase Storage and published when the album is public.</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="sr-only"
+                    onChange={(event) => setEventFiles(Array.from(event.target.files ?? []))}
+                  />
                 </label>
+                <button type="button" onClick={saveEventAlbum} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
+                  <Save className="h-4 w-4" /> Save Event Album
+                </button>
+              </div>
+
+              <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {eventAlbums.map((album) => {
+                  const cover = album.event_photos?.find((photo) => photo.public_url);
+                  return (
+                    <div key={album.id} className="overflow-hidden rounded-lg border border-border bg-[#f7f4f0]">
+                      <div className="aspect-[4/3] bg-secondary">
+                        {cover?.public_url ? (
+                          <img src={cover.public_url} alt={album.title} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-foreground/35">No photo</div>
+                        )}
+                      </div>
+                      <div className="p-4">
+                        <p className="font-semibold text-foreground">{album.title}</p>
+                        <p className="mt-1 text-xs text-foreground/50">{album.event_date || 'No date'} · {album.is_public ? 'Public' : 'Hidden'}</p>
+                        {album.description && <p className="mt-2 text-sm text-foreground/60">{album.description}</p>}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </Panel>
           )}
@@ -482,7 +625,20 @@ export function AdminApp() {
           )}
 
           {activeTab === 'users' && isSuperAdmin && (
-            <UserCrud profiles={profiles} clinics={clinics} form={profileForm} setForm={setProfileForm} editingId={editingProfileId} setEditingId={setEditingProfileId} onSave={saveProfile} onDelete={deleteProfile} />
+            <UserCrud
+              profiles={profiles}
+              clinics={clinics}
+              form={profileForm}
+              setForm={setProfileForm}
+              editingId={editingProfileId}
+              setEditingId={setEditingProfileId}
+              email={newUserEmail}
+              setEmail={setNewUserEmail}
+              password={newUserPassword}
+              setPassword={setNewUserPassword}
+              onSave={saveProfile}
+              onDelete={deleteProfile}
+            />
           )}
         </section>
       </main>
@@ -612,6 +768,10 @@ function UserCrud({
   setForm,
   editingId,
   setEditingId,
+  email,
+  setEmail,
+  password,
+  setPassword,
   onSave,
   onDelete,
 }: {
@@ -621,13 +781,23 @@ function UserCrud({
   setForm: (form: Profile) => void;
   editingId: string | null;
   setEditingId: (id: string | null) => void;
+  email: string;
+  setEmail: (value: string) => void;
+  password: string;
+  setPassword: (value: string) => void;
   onSave: () => void;
   onDelete: (id: string) => void;
 }) {
   return (
-    <Panel title="User Profile CRUD" subtitle="Create the Supabase Auth user first, then paste the Auth user ID here to assign admin access.">
+    <Panel title="User CRUD" subtitle="Create a login account with password, then assign the user to a role and clinic.">
       <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Input label="Auth User ID" value={form.id} onChange={(value) => setForm({ ...form, id: value })} />
+        {!editingId && (
+          <>
+            <Input label="Login email" value={email} onChange={setEmail} type="email" />
+            <Input label="Temporary password" value={password} onChange={setPassword} type="password" />
+          </>
+        )}
+        {editingId && <Input label="Auth User ID" value={form.id} onChange={(value) => setForm({ ...form, id: value })} />}
         <Input label="Full name" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} />
         <label className="block">
           <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Role</span>
@@ -650,10 +820,10 @@ function UserCrud({
         </label>
         <div className="flex items-end gap-2 xl:col-span-3">
           <button type="button" onClick={onSave} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
-            <Save className="h-4 w-4" /> {editingId ? 'Save User Profile' : 'Create User Profile'}
+            <Save className="h-4 w-4" /> {editingId ? 'Save User Profile' : 'Create User'}
           </button>
           {editingId && (
-            <button type="button" onClick={() => { setEditingId(null); setForm(emptyProfile); }} className="h-11 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
+            <button type="button" onClick={() => { setEditingId(null); setForm(emptyProfile); setEmail(''); setPassword(''); }} className="h-11 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
               Cancel
             </button>
           )}

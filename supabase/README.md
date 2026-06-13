@@ -24,7 +24,24 @@ values ('AUTH_USER_UUID_HERE', 'Super Admin', 'super_admin', null, true);
 
 Browser-safe user management:
 
-- The admin UI manages `public.user_profiles`.
-- Create the actual login account in Supabase Auth first.
-- Paste the Auth user UUID into the admin user's `Auth User ID` field.
+- The admin UI can create login users with passwords through the `admin-create-user` Edge Function.
+- Editing users updates `public.user_profiles`.
 - Do not expose a Supabase service-role key in Vercel or browser code.
+
+Deploy the Edge Function:
+
+```bash
+supabase functions deploy admin-create-user
+```
+
+Required Edge Function secrets:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Set secrets with:
+
+```bash
+supabase secrets set SUPABASE_URL=... SUPABASE_ANON_KEY=... SUPABASE_SERVICE_ROLE_KEY=...
+```

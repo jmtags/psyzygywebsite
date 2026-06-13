@@ -21,6 +21,7 @@ export function Navigation() {
     { label: 'About', id: 'about' },
     { label: 'Services', id: 'services' },
     { label: 'Branches', id: 'branches' },
+    { label: 'Events', id: 'events' },
     { label: 'Contact', id: 'contact' },
   ];
 

@@ -6,6 +6,7 @@ import { TrustSignals } from './components/TrustSignals';
 import { Services } from './components/Services';
 import { VisionMissionValues } from './components/VisionMissionValues';
 import { Branches } from './components/Branches';
+import { Events } from './components/Events';
 import { Ethics } from './components/Ethics';
 import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
@@ -32,6 +33,7 @@ export default function App() {
       <Services />
       <VisionMissionValues />
       <Branches />
+      <Events />
       <Ethics />
       <Contact />
       <Footer />
