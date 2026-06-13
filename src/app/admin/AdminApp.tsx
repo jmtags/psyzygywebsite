@@ -59,6 +59,7 @@ type Trainee = {
 
 type EventPhoto = {
   id: string;
+  storage_path: string;
   public_url: string | null;
   caption: string | null;
   sort_order: number;
@@ -105,6 +106,7 @@ export function AdminApp() {
   const [newUserPassword, setNewUserPassword] = useState('');
   const [editingClinicId, setEditingClinicId] = useState<string | null>(null);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [eventForm, setEventForm] = useState({ title: '', eventDate: '', description: '', isPublic: true });
   const [eventFiles, setEventFiles] = useState<File[]>([]);
 
@@ -196,7 +198,7 @@ export function AdminApp() {
 
     const { data: albumRows, error: albumsError } = await supabase
       .from('event_albums')
-      .select('id, clinic_id, title, event_date, description, is_public, event_photos(id, public_url, caption, sort_order)')
+      .select('id, clinic_id, title, event_date, description, is_public, event_photos(id, storage_path, public_url, caption, sort_order)')
       .order('event_date', { ascending: false });
 
     if (albumsError) {
@@ -317,29 +319,44 @@ export function AdminApp() {
   };
 
   const saveEventAlbum = async () => {
-    if (!supabase || !activeClinicId || !eventForm.title.trim()) {
+    if (!supabase || (!activeClinicId && !editingEventId) || !eventForm.title.trim()) {
       return;
     }
 
     setNotice('');
-    const { data: album, error: albumError } = await supabase
-      .from('event_albums')
-      .insert({
+    const payload = {
         clinic_id: activeClinicId,
         title: eventForm.title.trim(),
         event_date: eventForm.eventDate || null,
         description: eventForm.description.trim() || null,
         is_public: eventForm.isPublic,
         created_by: authUser?.id,
-      })
+    };
+
+    const albumResponse = editingEventId
+      ? await supabase
+        .from('event_albums')
+        .update({
+          title: payload.title,
+          event_date: payload.event_date,
+          description: payload.description,
+          is_public: payload.is_public,
+        })
+        .eq('id', editingEventId)
+        .select('id')
+        .single()
+      : await supabase
+        .from('event_albums')
+        .insert(payload)
       .select('id')
       .single();
 
-    if (albumError || !album) {
-      setNotice(albumError?.message ?? 'Unable to create event album.');
+    if (albumResponse.error || !albumResponse.data) {
+      setNotice(albumResponse.error?.message ?? 'Unable to save event album.');
       return;
     }
 
+    const album = albumResponse.data;
     for (const [index, file] of eventFiles.entries()) {
       const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '-');
       const storagePath = `${activeClinicId}/${album.id}/${Date.now()}-${index}-${safeName}`;
@@ -356,7 +373,7 @@ export function AdminApp() {
         storage_path: storagePath,
         public_url: publicUrlData.publicUrl,
         caption: eventForm.title.trim(),
-        sort_order: index,
+        sort_order: index + (editingEventId ? 100 : 0),
         uploaded_by: authUser?.id,
       });
 
@@ -367,6 +384,47 @@ export function AdminApp() {
 
     setEventForm({ title: '', eventDate: '', description: '', isPublic: true });
     setEventFiles([]);
+    setEditingEventId(null);
+    await loadAdminData();
+  };
+
+  const editEventAlbum = (album: EventAlbum) => {
+    setEditingEventId(album.id);
+    setSelectedClinicId(album.clinic_id || selectedClinicId);
+    setEventForm({
+      title: album.title,
+      eventDate: album.event_date || '',
+      description: album.description || '',
+      isPublic: album.is_public,
+    });
+    setEventFiles([]);
+  };
+
+  const deleteEventAlbum = async (album: EventAlbum) => {
+    if (!supabase || !window.confirm('Delete this event album and its photos?')) {
+      return;
+    }
+
+    const storagePaths = album.event_photos?.map((photo) => photo.storage_path).filter(Boolean) ?? [];
+    if (storagePaths.length > 0) {
+      const { error: storageError } = await supabase.storage.from('event-photos').remove(storagePaths);
+      if (storageError) {
+        setNotice(storageError.message);
+      }
+    }
+
+    const { error } = await supabase.from('event_albums').delete().eq('id', album.id);
+    if (error) {
+      setNotice(error.message);
+      return;
+    }
+
+    if (editingEventId === album.id) {
+      setEditingEventId(null);
+      setEventForm({ title: '', eventDate: '', description: '', isPublic: true });
+      setEventFiles([]);
+    }
+
     await loadAdminData();
   };
 
@@ -562,9 +620,24 @@ export function AdminApp() {
                     onChange={(event) => setEventFiles(Array.from(event.target.files ?? []))}
                   />
                 </label>
-                <button type="button" onClick={saveEventAlbum} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
-                  <Save className="h-4 w-4" /> Save Event Album
-                </button>
+                <div className="flex gap-2">
+                  <button type="button" onClick={saveEventAlbum} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
+                    <Save className="h-4 w-4" /> {editingEventId ? 'Save Event Changes' : 'Save Event Album'}
+                  </button>
+                  {editingEventId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingEventId(null);
+                        setEventForm({ title: '', eventDate: '', description: '', isPublic: true });
+                        setEventFiles([]);
+                      }}
+                      className="h-11 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -583,6 +656,22 @@ export function AdminApp() {
                         <p className="font-semibold text-foreground">{album.title}</p>
                         <p className="mt-1 text-xs text-foreground/50">{album.event_date || 'No date'} · {album.is_public ? 'Public' : 'Hidden'}</p>
                         {album.description && <p className="mt-2 text-sm text-foreground/60">{album.description}</p>}
+                        <div className="mt-4 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => editEventAlbum(album)}
+                            className="flex h-9 items-center gap-1 rounded-lg border border-border bg-white px-3 text-xs font-semibold"
+                          >
+                            <Pencil className="h-3.5 w-3.5" /> Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteEventAlbum(album)}
+                            className="flex h-9 items-center gap-1 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold text-red-600"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Delete
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
