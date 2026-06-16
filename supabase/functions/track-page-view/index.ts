@@ -22,6 +22,7 @@ Deno.serve(async (req) => {
     const userAgent = req.headers.get('user-agent') ?? String(body.user_agent ?? '');
     const deviceType = getDeviceType(userAgent);
     const location = getLocation(req, body);
+    const geoTimezone = nullableText(body.geo_timezone, 120);
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const { error } = await supabase.from('page_visits').insert({
@@ -34,7 +35,10 @@ Deno.serve(async (req) => {
       country: location.country,
       region: location.region,
       city: location.city,
-      timezone: nullableText(body.timezone, 120),
+      latitude: nullableNumber(body.latitude),
+      longitude: nullableNumber(body.longitude),
+      postal_code: nullableText(body.postal_code, 40),
+      timezone: geoTimezone ?? nullableText(body.timezone, 120),
       locale: nullableText(body.locale, 120),
       user_agent: userAgent.slice(0, 1000),
     });
@@ -59,6 +63,11 @@ function json(payload: unknown, status = 200) {
 function nullableText(value: unknown, maxLength: number) {
   const text = String(value ?? '').trim();
   return text ? text.slice(0, maxLength) : null;
+}
+
+function nullableNumber(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function getDeviceType(userAgent: string) {
