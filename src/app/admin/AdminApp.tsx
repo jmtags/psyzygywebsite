@@ -120,8 +120,8 @@ const emptyClinic = { id: '', name: '', slug: '', address: '', phone: '', email:
 const emptyProfile: Profile = { id: '', full_name: '', role: 'clinic_admin', clinic_id: '', is_active: true };
 const ojtTemplateHeaders = ['full_name', 'school_name', 'course', 'batch_name', 'total_hours', 'start_date', 'end_date', 'photo_file'];
 const ojtTemplateRows = [
-  ['Juan Dela Cruz', 'University of Example', 'BS Psychology', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30', 'juan.jpg'],
-  ['Maria Santos', 'Example State College', 'AB Psychology', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30', 'maria.png'],
+  ['Juan Dela Cruz', 'University of Example', 'BS Psychology', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30', ''],
+  ['Maria Santos', 'Example State College', 'AB Psychology', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30', ''],
 ];
 
 function mapTraineeRow(row: TraineeRow): Trainee {
