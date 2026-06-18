@@ -55,6 +55,8 @@ type Trainee = {
   fullName: string;
   schoolName: string;
   course: string;
+  dateOfBirth: string;
+  email: string;
   clinicId: string;
   totalHours: number;
   startDate: string;
@@ -71,6 +73,8 @@ type TraineeRow = {
   full_name: string;
   school_name: string | null;
   course: string | null;
+  date_of_birth: string | null;
+  email: string | null;
   total_hours: number | null;
   start_date: string | null;
   end_date: string | null;
@@ -88,6 +92,8 @@ type OjtImportRow = {
     full_name: string;
     school_name: string | null;
     course: string | null;
+    date_of_birth: string | null;
+    email: string | null;
     total_hours: number;
     start_date: string | null;
     end_date: string | null;
@@ -143,10 +149,10 @@ const tabs: Array<{ key: TabKey; label: string; icon: LucideIcon; superOnly?: bo
 
 const emptyClinic = { id: '', name: '', slug: '', address: '', phone: '', email: '' };
 const emptyProfile: Profile = { id: '', full_name: '', role: 'clinic_admin', clinic_id: '', is_active: true };
-const ojtTemplateHeaders = ['full_name', 'school_name', 'course', 'batch_name', 'total_hours', 'start_date', 'end_date', 'photo_file'];
+const ojtTemplateHeaders = ['full_name', 'school_name', 'course', 'date_of_birth', 'email', 'batch_name', 'total_hours', 'start_date', 'end_date', 'photo_file'];
 const ojtTemplateRows = [
-  ['Juan Dela Cruz', 'University of Example', 'BS Psychology', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30', ''],
-  ['Maria Santos', 'Example State College', 'AB Psychology', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30', ''],
+  ['Juan Dela Cruz', 'University of Example', 'BS Psychology', '2003-01-15', 'juan@example.com', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30', ''],
+  ['Maria Santos', 'Example State College', 'AB Psychology', '2003-05-20', 'maria@example.com', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30', ''],
 ];
 
 function mapTraineeRow(row: TraineeRow): Trainee {
@@ -155,6 +161,8 @@ function mapTraineeRow(row: TraineeRow): Trainee {
     fullName: row.full_name,
     schoolName: row.school_name ?? '',
     course: row.course ?? '',
+    dateOfBirth: row.date_of_birth ?? '',
+    email: row.email ?? '',
     clinicId: row.clinic_id,
     totalHours: row.total_hours ?? 0,
     startDate: row.start_date ?? '',
@@ -274,6 +282,10 @@ function normalizeRecordKey(value: string) {
   return value.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+function isValidEmail(value: string) {
+  return !value.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 export function AdminApp() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -326,6 +338,8 @@ export function AdminApp() {
     fullName: '',
     schoolName: '',
     course: '',
+    dateOfBirth: '',
+    email: '',
     totalHours: '300',
     startDate: '',
     endDate: '',
@@ -347,6 +361,8 @@ export function AdminApp() {
         trainee.fullName,
         trainee.schoolName,
         trainee.course,
+        trainee.dateOfBirth,
+        trainee.email,
         trainee.batchName,
         clinics.find((clinic) => clinic.id === trainee.clinicId)?.name ?? '',
       ].join(' ')).includes(query);
@@ -443,7 +459,7 @@ export function AdminApp() {
 
     const { data: traineeRows, error: traineesError } = await supabase
       .from('ojt_trainees')
-      .select('id, clinic_id, full_name, school_name, course, total_hours, start_date, end_date, status, notes, photo_public_url, photo_storage_path')
+      .select('id, clinic_id, full_name, school_name, course, date_of_birth, email, total_hours, start_date, end_date, status, notes, photo_public_url, photo_storage_path')
       .order('created_at', { ascending: false });
 
     if (traineesError) {
@@ -762,6 +778,11 @@ export function AdminApp() {
       return;
     }
 
+    if (!isValidEmail(newTrainee.email)) {
+      notify('Enter a valid OJT email address.', 'warning');
+      return;
+    }
+
     clearNotice();
     setIsSavingTrainee(true);
     try {
@@ -772,6 +793,8 @@ export function AdminApp() {
           full_name: fullName,
           school_name: newTrainee.schoolName.trim() || null,
           course: newTrainee.course.trim() || null,
+          date_of_birth: newTrainee.dateOfBirth || null,
+          email: newTrainee.email.trim() || null,
           total_hours: Number(newTrainee.totalHours) || 0,
           start_date: newTrainee.startDate || null,
           end_date: newTrainee.endDate || null,
@@ -779,7 +802,7 @@ export function AdminApp() {
           notes: newTrainee.batchName.trim() || null,
           created_by: authUser?.id,
         })
-        .select('id, clinic_id, full_name, school_name, course, total_hours, start_date, end_date, status, notes, photo_public_url, photo_storage_path')
+        .select('id, clinic_id, full_name, school_name, course, date_of_birth, email, total_hours, start_date, end_date, status, notes, photo_public_url, photo_storage_path')
         .single();
 
       if (traineeError || !traineeRow) {
@@ -812,7 +835,7 @@ export function AdminApp() {
         }
       }
 
-      setNewTrainee({ fullName: '', schoolName: '', course: '', totalHours: '300', startDate: '', endDate: '', batchName: '' });
+      setNewTrainee({ fullName: '', schoolName: '', course: '', dateOfBirth: '', email: '', totalHours: '300', startDate: '', endDate: '', batchName: '' });
       setTraineePhotoFile(null);
       setIsAddTraineeOpen(false);
       notify(`${fullName} was added successfully.`, 'success');
@@ -834,12 +857,14 @@ export function AdminApp() {
   };
 
   const exportOjtTrainees = () => {
-    const headers = ['full_name', 'clinic', 'school_name', 'course', 'batch_name', 'total_hours', 'start_date', 'end_date', 'status', 'photo_url'];
+    const headers = ['full_name', 'clinic', 'school_name', 'course', 'date_of_birth', 'email', 'batch_name', 'total_hours', 'start_date', 'end_date', 'status', 'photo_url'];
     const rows = filteredTrainees.map((trainee) => [
       trainee.fullName,
       clinics.find((clinic) => clinic.id === trainee.clinicId)?.name ?? 'Clinic',
       trainee.schoolName,
       trainee.course,
+      trainee.dateOfBirth,
+      trainee.email,
       trainee.batchName,
       String(trainee.totalHours),
       trainee.startDate,
@@ -994,11 +1019,14 @@ export function AdminApp() {
     for (const [rowIndex, row] of parsedRows.slice(1).entries()) {
       const rowNumber = rowIndex + 2;
       const fullName = row[headerIndex.full_name]?.trim() ?? '';
+      const email = row[headerIndex.email]?.trim() ?? '';
+      const dateOfBirth = row[headerIndex.date_of_birth]?.trim() ?? '';
       const totalHoursValue = row[headerIndex.total_hours]?.trim() ?? '';
       const startDate = row[headerIndex.start_date]?.trim() ?? '';
       const endDate = row[headerIndex.end_date]?.trim() ?? '';
       const photoFileName = row[headerIndex.photo_file]?.trim() ?? '';
       const totalHours = Number(totalHoursValue);
+      const normalizedDateOfBirth = normalizeCsvDate(dateOfBirth);
       const normalizedStartDate = normalizeCsvDate(startDate);
       const normalizedEndDate = normalizeCsvDate(endDate);
 
@@ -1009,6 +1037,16 @@ export function AdminApp() {
 
       if (totalHoursValue && (!Number.isFinite(totalHours) || totalHours < 0)) {
         notify(`Row ${rowNumber}: total_hours must be a valid number.`, 'warning');
+        return;
+      }
+
+      if (normalizedDateOfBirth === undefined) {
+        notify(`Row ${rowNumber}: date_of_birth must use YYYY-MM-DD or Excel date format.`, 'warning');
+        return;
+      }
+
+      if (!isValidEmail(email)) {
+        notify(`Row ${rowNumber}: email must be a valid email address.`, 'warning');
         return;
       }
 
@@ -1029,6 +1067,8 @@ export function AdminApp() {
           full_name: fullName,
           school_name: row[headerIndex.school_name]?.trim() || null,
           course: row[headerIndex.course]?.trim() || null,
+          date_of_birth: normalizedDateOfBirth,
+          email: email || null,
           total_hours: totalHoursValue ? totalHours : 0,
           start_date: normalizedStartDate,
           end_date: normalizedEndDate,
@@ -1147,12 +1187,19 @@ export function AdminApp() {
       return;
     }
 
+    if (!isValidEmail(editingTrainee.email)) {
+      notify('Enter a valid OJT email address.', 'warning');
+      return;
+    }
+
     setIsSavingEditedTrainee(true);
     try {
       const updates = {
         full_name: editingTrainee.fullName.trim(),
         school_name: editingTrainee.schoolName.trim() || null,
         course: editingTrainee.course.trim() || null,
+        date_of_birth: editingTrainee.dateOfBirth || null,
+        email: editingTrainee.email.trim() || null,
         total_hours: Number(editingTrainee.totalHours) || 0,
         start_date: editingTrainee.startDate || null,
         end_date: editingTrainee.endDate || null,
@@ -2153,6 +2200,8 @@ function OjtAddDialog({
     fullName: string;
     schoolName: string;
     course: string;
+    dateOfBirth: string;
+    email: string;
     totalHours: string;
     startDate: string;
     endDate: string;
@@ -2162,6 +2211,8 @@ function OjtAddDialog({
     fullName: string;
     schoolName: string;
     course: string;
+    dateOfBirth: string;
+    email: string;
     totalHours: string;
     startDate: string;
     endDate: string;
@@ -2189,6 +2240,8 @@ function OjtAddDialog({
           <Input value={trainee.fullName} onChange={(value) => setTrainee({ ...trainee, fullName: value })} label="Full name" />
           <Input value={trainee.schoolName} onChange={(value) => setTrainee({ ...trainee, schoolName: value })} label="School" />
           <Input value={trainee.course} onChange={(value) => setTrainee({ ...trainee, course: value })} label="Course" />
+          <Input value={trainee.dateOfBirth} onChange={(value) => setTrainee({ ...trainee, dateOfBirth: value })} label="Date of birth" type="date" />
+          <Input value={trainee.email} onChange={(value) => setTrainee({ ...trainee, email: value })} label="Email" type="email" />
           <Input value={trainee.batchName} onChange={(value) => setTrainee({ ...trainee, batchName: value })} label="Batch" />
           <Input value={trainee.totalHours} onChange={(value) => setTrainee({ ...trainee, totalHours: value })} label="Hours" type="number" />
           <Input value={trainee.startDate} onChange={(value) => setTrainee({ ...trainee, startDate: value })} label="Start date" type="date" />
@@ -2258,6 +2311,8 @@ function OjtDetailsDialog({
             <DetailItem label="Status" value={trainee.status} />
             <DetailItem label="School" value={trainee.schoolName || 'Not provided'} />
             <DetailItem label="Course" value={trainee.course || 'Not provided'} />
+            <DetailItem label="Date of birth" value={trainee.dateOfBirth || 'Not provided'} />
+            <DetailItem label="Email" value={trainee.email || 'Not provided'} />
             <DetailItem label="Batch" value={trainee.batchName || 'Not provided'} />
             <DetailItem label="Total hours" value={String(trainee.totalHours)} />
             <DetailItem label="Start date" value={trainee.startDate || 'Not provided'} />
@@ -2308,6 +2363,8 @@ function OjtEditDialog({
           </label>
           <Input label="School" value={trainee.schoolName} onChange={(value) => setTrainee({ ...trainee, schoolName: value })} />
           <Input label="Course" value={trainee.course} onChange={(value) => setTrainee({ ...trainee, course: value })} />
+          <Input label="Date of birth" value={trainee.dateOfBirth} onChange={(value) => setTrainee({ ...trainee, dateOfBirth: value })} type="date" />
+          <Input label="Email" value={trainee.email} onChange={(value) => setTrainee({ ...trainee, email: value })} type="email" />
           <Input label="Batch" value={trainee.batchName} onChange={(value) => setTrainee({ ...trainee, batchName: value })} />
           <Input label="Hours" value={String(trainee.totalHours)} onChange={(value) => setTrainee({ ...trainee, totalHours: Number(value) || 0 })} type="number" />
           <Input label="Start date" value={trainee.startDate} onChange={(value) => setTrainee({ ...trainee, startDate: value })} type="date" />
@@ -2434,13 +2491,15 @@ function TraineeTable({
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[980px] text-left text-sm">
+      <table className="w-full min-w-[1180px] text-left text-sm">
         <thead className="border-b border-border text-xs uppercase tracking-wide text-foreground/45">
           <tr>
             <th className="py-3 pr-4">Photo</th>
             <th className="py-3 pr-4">Name</th>
             <th className="py-3 pr-4">Clinic</th>
             <th className="py-3 pr-4">School</th>
+            <th className="py-3 pr-4">Email</th>
+            <th className="py-3 pr-4">Birth date</th>
             <th className="py-3 pr-4">Hours</th>
             <th className="py-3 pr-4">Status</th>
             <th className="py-3 pr-4">Actions</th>
@@ -2463,6 +2522,8 @@ function TraineeTable({
               <td className="py-4 pr-4 font-medium text-foreground">{trainee.fullName}</td>
               <td className="py-4 pr-4 text-foreground/60">{clinics.find((clinic) => clinic.id === trainee.clinicId)?.name ?? 'Clinic'}</td>
               <td className="py-4 pr-4 text-foreground/60">{trainee.schoolName}</td>
+              <td className="py-4 pr-4 text-foreground/60">{trainee.email || '-'}</td>
+              <td className="py-4 pr-4 text-foreground/60">{trainee.dateOfBirth || '-'}</td>
               <td className="py-4 pr-4 text-foreground/60">{trainee.totalHours}</td>
               <td className="py-4 pr-4">
                 <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${trainee.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
