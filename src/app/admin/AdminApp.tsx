@@ -31,6 +31,7 @@ import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 type AdminRole = 'super_admin' | 'clinic_admin' | 'staff';
 type TabKey = 'overview' | 'analytics' | 'events' | 'ojt' | 'certificates' | 'clinics' | 'users';
 type OjtStatus = 'active' | 'completed' | 'withdrawn';
+type AdminNoticeType = 'success' | 'warning' | 'error';
 
 type Clinic = {
   id: string;
@@ -286,6 +287,7 @@ export function AdminApp() {
   const [selectedClinicId, setSelectedClinicId] = useState('');
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
+  const [noticeType, setNoticeType] = useState<AdminNoticeType>('warning');
 
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -306,6 +308,10 @@ export function AdminApp() {
   const [editingTrainee, setEditingTrainee] = useState<Trainee | null>(null);
   const [editingTraineePhotoFile, setEditingTraineePhotoFile] = useState<File | null>(null);
   const [isAddTraineeOpen, setIsAddTraineeOpen] = useState(false);
+  const [isSavingTrainee, setIsSavingTrainee] = useState(false);
+  const [isSavingEditedTrainee, setIsSavingEditedTrainee] = useState(false);
+  const [deletingTraineeId, setDeletingTraineeId] = useState<string | null>(null);
+  const [isImportingOjt, setIsImportingOjt] = useState(false);
   const [ojtSearch, setOjtSearch] = useState('');
   const [ojtStatusFilter, setOjtStatusFilter] = useState<'all' | OjtStatus>('all');
   const [ojtBatchFile, setOjtBatchFile] = useState<File | null>(null);
@@ -348,6 +354,15 @@ export function AdminApp() {
     });
   }, [clinics, ojtSearch, ojtStatusFilter, visibleTrainees]);
   const completedTrainees = visibleTrainees.filter((trainee) => trainee.status === 'completed');
+
+  const notify = (message: string, type: AdminNoticeType = 'warning') => {
+    setNoticeType(type);
+    setNotice(message);
+  };
+
+  const clearNotice = () => {
+    setNotice('');
+  };
 
   useEffect(() => {
     if (!supabase) {
@@ -728,41 +743,60 @@ export function AdminApp() {
   };
 
   const addTrainee = async () => {
-    if (!supabase || !newTrainee.fullName.trim() || !activeClinicId) {
+    if (!supabase || isSavingTrainee) {
       return;
     }
 
-    setNotice('');
-    const { data: traineeRow, error: traineeError } = await supabase
-      .from('ojt_trainees')
-      .insert({
-        clinic_id: activeClinicId,
-        full_name: newTrainee.fullName.trim(),
-        school_name: newTrainee.schoolName.trim() || null,
-        course: newTrainee.course.trim() || null,
-        total_hours: Number(newTrainee.totalHours) || 0,
-        start_date: newTrainee.startDate || null,
-        end_date: newTrainee.endDate || null,
-        status: 'active',
-        notes: newTrainee.batchName.trim() || null,
-        created_by: authUser?.id,
-      })
-      .select('id, clinic_id, full_name, school_name, course, total_hours, start_date, end_date, status, notes, photo_public_url, photo_storage_path')
-      .single();
-
-    if (traineeError || !traineeRow) {
-      setNotice(traineeError?.message ?? 'Unable to save OJT trainee.');
+    const fullName = newTrainee.fullName.trim();
+    if (!fullName || !activeClinicId) {
+      notify('OJT trainee full name is required.', 'warning');
       return;
     }
 
-    if (traineePhotoFile) {
-      const safeName = traineePhotoFile.name.replace(/[^a-zA-Z0-9.-]/g, '-');
-      const storagePath = `${activeClinicId}/${traineeRow.id}/${Date.now()}-${safeName}`;
-      const { error: uploadError } = await supabase.storage.from('ojt-photos').upload(storagePath, traineePhotoFile);
+    const duplicate = visibleTrainees.find((trainee) => (
+      trainee.clinicId === activeClinicId &&
+      normalizeRecordKey(trainee.fullName) === normalizeRecordKey(fullName)
+    ));
+    if (duplicate) {
+      notify(`${fullName} already exists in this clinic. Use Edit or the batch override flow instead.`, 'warning');
+      return;
+    }
 
-      if (uploadError) {
-        setNotice(uploadError.message);
-      } else {
+    clearNotice();
+    setIsSavingTrainee(true);
+    try {
+      const { data: traineeRow, error: traineeError } = await supabase
+        .from('ojt_trainees')
+        .insert({
+          clinic_id: activeClinicId,
+          full_name: fullName,
+          school_name: newTrainee.schoolName.trim() || null,
+          course: newTrainee.course.trim() || null,
+          total_hours: Number(newTrainee.totalHours) || 0,
+          start_date: newTrainee.startDate || null,
+          end_date: newTrainee.endDate || null,
+          status: 'active',
+          notes: newTrainee.batchName.trim() || null,
+          created_by: authUser?.id,
+        })
+        .select('id, clinic_id, full_name, school_name, course, total_hours, start_date, end_date, status, notes, photo_public_url, photo_storage_path')
+        .single();
+
+      if (traineeError || !traineeRow) {
+        notify(traineeError?.message ?? 'Unable to save OJT trainee.', 'error');
+        return;
+      }
+
+      if (traineePhotoFile) {
+        const safeName = traineePhotoFile.name.replace(/[^a-zA-Z0-9.-]/g, '-');
+        const storagePath = `${activeClinicId}/${traineeRow.id}/${Date.now()}-${safeName}`;
+        const { error: uploadError } = await supabase.storage.from('ojt-photos').upload(storagePath, traineePhotoFile);
+
+        if (uploadError) {
+          notify(uploadError.message, 'error');
+          return;
+        }
+
         const { data: publicUrlData } = supabase.storage.from('ojt-photos').getPublicUrl(storagePath);
         const { error: photoUpdateError } = await supabase
           .from('ojt_trainees')
@@ -773,15 +807,19 @@ export function AdminApp() {
           .eq('id', traineeRow.id);
 
         if (photoUpdateError) {
-          setNotice(photoUpdateError.message);
+          notify(photoUpdateError.message, 'error');
+          return;
         }
       }
-    }
 
-    setNewTrainee({ fullName: '', schoolName: '', course: '', totalHours: '300', startDate: '', endDate: '', batchName: '' });
-    setTraineePhotoFile(null);
-    setIsAddTraineeOpen(false);
-    await loadAdminData();
+      setNewTrainee({ fullName: '', schoolName: '', course: '', totalHours: '300', startDate: '', endDate: '', batchName: '' });
+      setTraineePhotoFile(null);
+      setIsAddTraineeOpen(false);
+      notify(`${fullName} was added successfully.`, 'success');
+      await loadAdminData();
+    } finally {
+      setIsSavingTrainee(false);
+    }
   };
 
   const downloadOjtTemplate = () => {
@@ -824,13 +862,15 @@ export function AdminApp() {
     missingPhotoFiles: string[],
     overrideIdsByRowNumber = new Map<number, string>(),
   ) => {
-    if (!supabase || !activeClinicId) {
+    if (!supabase || !activeClinicId || isImportingOjt) {
       return;
     }
 
-    const selectedPhotoFiles = new Map(ojtBatchPhotoFiles.map((file) => [normalizeFileName(file.name), file]));
-    let uploadedPhotoCount = 0;
-    let savedRowCount = 0;
+    setIsImportingOjt(true);
+    try {
+      const selectedPhotoFiles = new Map(ojtBatchPhotoFiles.map((file) => [normalizeFileName(file.name), file]));
+      let uploadedPhotoCount = 0;
+      let savedRowCount = 0;
 
     const uploadImportPhoto = async (traineeId: string, photoFileName: string, index: number) => {
       if (!photoFileName) {
@@ -847,7 +887,7 @@ export function AdminApp() {
       const { error: uploadError } = await supabase.storage.from('ojt-photos').upload(storagePath, photoFile);
 
       if (uploadError) {
-        setNotice(uploadError.message);
+        notify(uploadError.message, 'error');
         return false;
       }
 
@@ -861,7 +901,7 @@ export function AdminApp() {
         .eq('id', traineeId);
 
       if (photoUpdateError) {
-        setNotice(photoUpdateError.message);
+        notify(photoUpdateError.message, 'error');
         return false;
       }
 
@@ -877,7 +917,7 @@ export function AdminApp() {
         .select('id');
 
       if (error || !insertedRows) {
-        setNotice(error?.message ?? 'Unable to import OJT trainees.');
+        notify(error?.message ?? 'Unable to import OJT trainees.', 'error');
         return;
       }
 
@@ -902,7 +942,7 @@ export function AdminApp() {
         .eq('id', existingId);
 
       if (error) {
-        setNotice(error.message);
+        notify(error.message, 'error');
         return;
       }
 
@@ -918,28 +958,31 @@ export function AdminApp() {
     setPendingOjtImport(null);
     setSelectedDuplicateRows([]);
     const skippedPhotoCount = missingPhotoFiles.length;
-    setNotice(`${savedRowCount} OJT trainee(s) saved${uploadedPhotoCount ? ` with ${uploadedPhotoCount} photo(s)` : ''}${skippedPhotoCount ? `; ${skippedPhotoCount} photo filename(s) were not selected and were skipped` : ''}.`);
-    await loadAdminData();
+      notify(`${savedRowCount} OJT trainee(s) saved${uploadedPhotoCount ? ` with ${uploadedPhotoCount} photo(s)` : ''}${skippedPhotoCount ? `; ${skippedPhotoCount} photo filename(s) were not selected and were skipped` : ''}.`, skippedPhotoCount ? 'warning' : 'success');
+      await loadAdminData();
+    } finally {
+      setIsImportingOjt(false);
+    }
   };
 
   const uploadOjtBatch = async () => {
-    if (!supabase || !activeClinicId || !ojtBatchFile) {
+    if (!supabase || !activeClinicId || !ojtBatchFile || isImportingOjt) {
       return;
     }
 
-    setNotice('');
+    clearNotice();
     const csvText = await ojtBatchFile.text();
     const parsedRows = parseCsv(csvText);
 
     if (parsedRows.length < 2) {
-      setNotice('Upload a CSV with headers and at least one OJT trainee.');
+      notify('Upload a CSV with headers and at least one OJT trainee.', 'warning');
       return;
     }
 
     const headers = parsedRows[0].map((header) => header.trim().toLowerCase());
     const missingHeaders = ojtTemplateHeaders.filter((header) => !headers.includes(header));
     if (missingHeaders.length > 0) {
-      setNotice(`Missing CSV column(s): ${missingHeaders.join(', ')}`);
+      notify(`Missing CSV column(s): ${missingHeaders.join(', ')}`, 'warning');
       return;
     }
 
@@ -960,17 +1003,17 @@ export function AdminApp() {
       const normalizedEndDate = normalizeCsvDate(endDate);
 
       if (!fullName) {
-        setNotice(`Row ${rowNumber}: full_name is required.`);
+        notify(`Row ${rowNumber}: full_name is required.`, 'warning');
         return;
       }
 
       if (totalHoursValue && (!Number.isFinite(totalHours) || totalHours < 0)) {
-        setNotice(`Row ${rowNumber}: total_hours must be a valid number.`);
+        notify(`Row ${rowNumber}: total_hours must be a valid number.`, 'warning');
         return;
       }
 
       if (normalizedStartDate === undefined || normalizedEndDate === undefined) {
-        setNotice(`Row ${rowNumber}: dates must use YYYY-MM-DD or Excel date format.`);
+        notify(`Row ${rowNumber}: dates must use YYYY-MM-DD or Excel date format.`, 'warning');
         return;
       }
 
@@ -1014,7 +1057,7 @@ export function AdminApp() {
         duplicates,
       });
       setSelectedDuplicateRows(duplicates.map((duplicate) => duplicate.row.rowNumber));
-      setNotice(`${duplicates.length} existing OJT record(s) found. Review duplicates before importing.`);
+      notify(`${duplicates.length} existing OJT record(s) found. Review duplicates before importing.`, 'warning');
       return;
     }
 
@@ -1072,114 +1115,138 @@ export function AdminApp() {
       .eq('id', id);
 
     if (error) {
-      setNotice(error.message);
+      notify(error.message, 'error');
       return;
     }
 
+    const completedName = trainees.find((trainee) => trainee.id === id)?.fullName ?? 'OJT trainee';
     setTrainees((current) => current.map((trainee) => (
       trainee.id === id ? { ...trainee, status: 'completed' } : trainee
     )));
+    notify(`${completedName} was marked completed.`, 'success');
   };
 
   const saveEditedTrainee = async () => {
-    if (!supabase || !editingTrainee) {
+    if (!supabase || !editingTrainee || isSavingEditedTrainee) {
       return;
     }
 
-    setNotice('');
+    clearNotice();
     if (!editingTrainee.fullName.trim()) {
-      setNotice('OJT trainee full name is required.');
+      notify('OJT trainee full name is required.', 'warning');
       return;
     }
 
-    const updates = {
-      full_name: editingTrainee.fullName.trim(),
-      school_name: editingTrainee.schoolName.trim() || null,
-      course: editingTrainee.course.trim() || null,
-      total_hours: Number(editingTrainee.totalHours) || 0,
-      start_date: editingTrainee.startDate || null,
-      end_date: editingTrainee.endDate || null,
-      status: editingTrainee.status,
-      notes: editingTrainee.batchName.trim() || null,
-    };
-
-    const { error } = await supabase
-      .from('ojt_trainees')
-      .update(updates)
-      .eq('id', editingTrainee.id);
-
-    if (error) {
-      setNotice(error.message);
+    const duplicate = visibleTrainees.find((trainee) => (
+      trainee.id !== editingTrainee.id &&
+      trainee.clinicId === editingTrainee.clinicId &&
+      normalizeRecordKey(trainee.fullName) === normalizeRecordKey(editingTrainee.fullName)
+    ));
+    if (duplicate) {
+      notify(`${editingTrainee.fullName.trim()} already exists in this clinic.`, 'warning');
       return;
     }
 
-    if (editingTraineePhotoFile) {
-      if (editingTrainee.photoStoragePath) {
-        await supabase.storage.from('ojt-photos').remove([editingTrainee.photoStoragePath]);
-      }
+    setIsSavingEditedTrainee(true);
+    try {
+      const updates = {
+        full_name: editingTrainee.fullName.trim(),
+        school_name: editingTrainee.schoolName.trim() || null,
+        course: editingTrainee.course.trim() || null,
+        total_hours: Number(editingTrainee.totalHours) || 0,
+        start_date: editingTrainee.startDate || null,
+        end_date: editingTrainee.endDate || null,
+        status: editingTrainee.status,
+        notes: editingTrainee.batchName.trim() || null,
+      };
 
-      const safeName = editingTraineePhotoFile.name.replace(/[^a-zA-Z0-9.-]/g, '-');
-      const storagePath = `${editingTrainee.clinicId}/${editingTrainee.id}/${Date.now()}-${safeName}`;
-      const { error: uploadError } = await supabase.storage.from('ojt-photos').upload(storagePath, editingTraineePhotoFile);
-
-      if (uploadError) {
-        setNotice(uploadError.message);
-        return;
-      }
-
-      const { data: publicUrlData } = supabase.storage.from('ojt-photos').getPublicUrl(storagePath);
-      const { error: photoUpdateError } = await supabase
+      const { error } = await supabase
         .from('ojt_trainees')
-        .update({
-          photo_storage_path: storagePath,
-          photo_public_url: publicUrlData.publicUrl,
-        })
+        .update(updates)
         .eq('id', editingTrainee.id);
 
-      if (photoUpdateError) {
-        setNotice(photoUpdateError.message);
+      if (error) {
+        notify(error.message, 'error');
         return;
       }
-    }
 
-    setEditingTrainee(null);
-    setEditingTraineePhotoFile(null);
-    await loadAdminData();
+      if (editingTraineePhotoFile) {
+        if (editingTrainee.photoStoragePath) {
+          await supabase.storage.from('ojt-photos').remove([editingTrainee.photoStoragePath]);
+        }
+
+        const safeName = editingTraineePhotoFile.name.replace(/[^a-zA-Z0-9.-]/g, '-');
+        const storagePath = `${editingTrainee.clinicId}/${editingTrainee.id}/${Date.now()}-${safeName}`;
+        const { error: uploadError } = await supabase.storage.from('ojt-photos').upload(storagePath, editingTraineePhotoFile);
+
+        if (uploadError) {
+          notify(uploadError.message, 'error');
+          return;
+        }
+
+        const { data: publicUrlData } = supabase.storage.from('ojt-photos').getPublicUrl(storagePath);
+        const { error: photoUpdateError } = await supabase
+          .from('ojt_trainees')
+          .update({
+            photo_storage_path: storagePath,
+            photo_public_url: publicUrlData.publicUrl,
+          })
+          .eq('id', editingTrainee.id);
+
+        if (photoUpdateError) {
+          notify(photoUpdateError.message, 'error');
+          return;
+        }
+      }
+
+      notify(`${editingTrainee.fullName.trim()} was updated successfully.`, 'success');
+      setEditingTrainee(null);
+      setEditingTraineePhotoFile(null);
+      await loadAdminData();
+    } finally {
+      setIsSavingEditedTrainee(false);
+    }
   };
 
   const deleteTrainee = async (trainee: Trainee) => {
-    if (!supabase || !window.confirm(`Delete OJT record for ${trainee.fullName}?`)) {
+    if (!supabase || deletingTraineeId || !window.confirm(`Delete OJT record for ${trainee.fullName}?`)) {
       return;
     }
 
-    setNotice('');
-    if (trainee.photoStoragePath) {
-      const { error: storageError } = await supabase.storage.from('ojt-photos').remove([trainee.photoStoragePath]);
-      if (storageError) {
-        setNotice(storageError.message);
+    clearNotice();
+    setDeletingTraineeId(trainee.id);
+    try {
+      if (trainee.photoStoragePath) {
+        const { error: storageError } = await supabase.storage.from('ojt-photos').remove([trainee.photoStoragePath]);
+        if (storageError) {
+          notify(storageError.message, 'error');
+          return;
+        }
+      }
+
+      const { error } = await supabase
+        .from('ojt_trainees')
+        .delete()
+        .eq('id', trainee.id);
+
+      if (error) {
+        notify(error.message, 'error');
         return;
       }
-    }
 
-    const { error } = await supabase
-      .from('ojt_trainees')
-      .delete()
-      .eq('id', trainee.id);
+      if (selectedTrainee?.id === trainee.id) {
+        setSelectedTrainee(null);
+      }
+      if (editingTrainee?.id === trainee.id) {
+        setEditingTrainee(null);
+        setEditingTraineePhotoFile(null);
+      }
 
-    if (error) {
-      setNotice(error.message);
-      return;
+      notify(`${trainee.fullName} was deleted.`, 'success');
+      await loadAdminData();
+    } finally {
+      setDeletingTraineeId(null);
     }
-
-    if (selectedTrainee?.id === trainee.id) {
-      setSelectedTrainee(null);
-    }
-    if (editingTrainee?.id === trainee.id) {
-      setEditingTrainee(null);
-      setEditingTraineePhotoFile(null);
-    }
-
-    await loadAdminData();
   };
 
   const generateCertificates = (selected = completedTrainees) => {
@@ -1214,7 +1281,7 @@ export function AdminApp() {
           <div className="space-y-4">
             <Input label="Email" value={loginEmail} onChange={setLoginEmail} type="email" />
             <Input label="Password" value={loginPassword} onChange={setLoginPassword} type="password" />
-            {notice && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
+            {notice && <AdminNotice message={notice} type={noticeType} />}
             <button
               type="button"
               onClick={login}
@@ -1286,7 +1353,7 @@ export function AdminApp() {
         </aside>
 
         <section className="space-y-6">
-          {notice && <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{notice}</p>}
+          {notice && <AdminNotice message={notice} type={noticeType} />}
 
           {activeTab === 'overview' && (
             <div className="grid gap-4 md:grid-cols-3">
@@ -1480,8 +1547,8 @@ export function AdminApp() {
                       }}
                     />
                   </label>
-                  <button type="button" onClick={uploadOjtBatch} disabled={!ojtBatchFile} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
-                    <Upload className="h-4 w-4" /> Import
+                  <button type="button" onClick={uploadOjtBatch} disabled={!ojtBatchFile || isImportingOjt} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
+                    <Upload className="h-4 w-4" /> {isImportingOjt ? 'Importing...' : 'Import'}
                   </button>
                 </div>
               </div>
@@ -1494,6 +1561,7 @@ export function AdminApp() {
                   setEditingTraineePhotoFile(null);
                 }}
                 onDelete={deleteTrainee}
+                deletingId={deletingTraineeId}
                 onComplete={markCompleted}
                 onCertificate={(trainee) => generateCertificates([trainee])}
               />
@@ -1504,6 +1572,7 @@ export function AdminApp() {
                   photoFile={traineePhotoFile}
                   setPhotoFile={setTraineePhotoFile}
                   onSave={addTrainee}
+                  isSaving={isSavingTrainee}
                   onClose={() => {
                     setIsAddTraineeOpen(false);
                     setTraineePhotoFile(null);
@@ -1525,6 +1594,7 @@ export function AdminApp() {
                   setPhotoFile={setEditingTraineePhotoFile}
                   clinicName={clinics.find((clinic) => clinic.id === editingTrainee.clinicId)?.name ?? 'Clinic'}
                   onSave={saveEditedTrainee}
+                  isSaving={isSavingEditedTrainee}
                   onClose={() => {
                     setEditingTrainee(null);
                     setEditingTraineePhotoFile(null);
@@ -1722,6 +1792,20 @@ function Panel({ title, subtitle, children }: { title: string; subtitle: string;
         <p className="mt-1 text-sm text-foreground/55">{subtitle}</p>
       </div>
       {children}
+    </div>
+  );
+}
+
+function AdminNotice({ message, type }: { message: string; type: AdminNoticeType }) {
+  const styles = {
+    success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    warning: 'border-amber-200 bg-amber-50 text-amber-900',
+    error: 'border-red-200 bg-red-50 text-red-700',
+  };
+
+  return (
+    <div className={`rounded-lg border p-4 text-sm font-medium ${styles[type]}`} role="status">
+      {message}
     </div>
   );
 }
@@ -2060,6 +2144,7 @@ function OjtAddDialog({
   photoFile,
   setPhotoFile,
   onSave,
+  isSaving,
   onClose,
 }: {
   trainee: {
@@ -2083,6 +2168,7 @@ function OjtAddDialog({
   photoFile: File | null;
   setPhotoFile: (file: File | null) => void;
   onSave: () => void;
+  isSaving: boolean;
   onClose: () => void;
 }) {
   return (
@@ -2125,8 +2211,8 @@ function OjtAddDialog({
           <button type="button" onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
             Cancel
           </button>
-          <button type="button" onClick={onSave} className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
-            <Plus className="h-4 w-4" /> Add OJT
+          <button type="button" onClick={onSave} disabled={isSaving} className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+            <Plus className="h-4 w-4" /> {isSaving ? 'Adding...' : 'Add OJT'}
           </button>
         </div>
       </div>
@@ -2188,6 +2274,7 @@ function OjtEditDialog({
   setPhotoFile,
   clinicName,
   onSave,
+  isSaving,
   onClose,
 }: {
   trainee: Trainee;
@@ -2196,6 +2283,7 @@ function OjtEditDialog({
   setPhotoFile: (file: File | null) => void;
   clinicName: string;
   onSave: () => void;
+  isSaving: boolean;
   onClose: () => void;
 }) {
   return (
@@ -2247,8 +2335,8 @@ function OjtEditDialog({
           <button type="button" onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
             Cancel
           </button>
-          <button type="button" onClick={onSave} className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
-            <Save className="h-4 w-4" /> Save Changes
+          <button type="button" onClick={onSave} disabled={isSaving} className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+            <Save className="h-4 w-4" /> {isSaving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>
@@ -2329,6 +2417,7 @@ function TraineeTable({
   onView,
   onEdit,
   onDelete,
+  deletingId,
   onComplete,
   onCertificate,
 }: {
@@ -2337,6 +2426,7 @@ function TraineeTable({
   onView: (trainee: Trainee) => void;
   onEdit: (trainee: Trainee) => void;
   onDelete: (trainee: Trainee) => void;
+  deletingId: string | null;
   onComplete: (id: string) => void | Promise<void>;
   onCertificate: (trainee: Trainee) => void;
 }) {
@@ -2393,8 +2483,8 @@ function TraineeTable({
                   <button type="button" onClick={() => onCertificate(trainee)} className="flex h-9 items-center gap-1 rounded-lg bg-primary px-3 text-xs font-semibold text-white">
                     <Download className="h-3.5 w-3.5" /> PDF
                   </button>
-                  <button type="button" onClick={() => onDelete(trainee)} className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600">
-                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                  <button type="button" onClick={() => onDelete(trainee)} disabled={deletingId === trainee.id} className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-40">
+                    <Trash2 className="h-3.5 w-3.5" /> {deletingId === trainee.id ? 'Deleting...' : 'Delete'}
                   </button>
                 </div>
               </td>
