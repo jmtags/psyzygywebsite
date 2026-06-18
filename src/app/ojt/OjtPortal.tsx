@@ -160,27 +160,27 @@ export function OjtPortal() {
               type="button"
               onClick={() => loadPortalData()}
               disabled={isLoading || !email.trim() || !dateOfBirth}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 text-base font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <LogIn className="h-4 w-4" /> {isLoading ? 'Checking...' : 'Login'}
             </button>
           </div>
         </PortalCard>
       ) : (
-        <div className="mx-auto grid w-full max-w-5xl gap-5 px-4 py-8">
+        <div className="mx-auto grid w-full max-w-5xl gap-4 px-3 py-4 sm:gap-5 sm:px-4 sm:py-8">
           <div className="rounded-lg border border-border bg-white p-5">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/60">OJT Portal</p>
-                <h1 className="mt-2 text-3xl font-normal text-foreground" style={{ fontFamily: 'var(--font-display)' }}>{profile.full_name}</h1>
+                <h1 className="mt-2 text-2xl font-normal text-foreground sm:text-3xl" style={{ fontFamily: 'var(--font-display)' }}>{profile.full_name}</h1>
                 <p className="mt-1 text-sm text-foreground/55">{profile.school_name || 'School not provided'} | {profile.clinic_name}</p>
               </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => loadPortalData()} className="flex h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
+              <div className="grid gap-2 sm:flex sm:gap-2">
+                <button type="button" onClick={() => loadPortalData()} className="flex h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
                   <RefreshCw className="h-4 w-4" /> Refresh
                 </button>
-                <button type="button" onClick={logout} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
-                  Logout
+                <button type="button" onClick={logout} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-red-700">
+                  <LogOut className="h-4 w-4" /> Logout
                 </button>
               </div>
             </div>
@@ -198,7 +198,7 @@ export function OjtPortal() {
 
           {notice && <Notice message={notice} type={noticeType} />}
 
-          <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+          <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
             <div className="rounded-lg border border-border bg-white p-5">
               <div className="flex items-center gap-2 text-primary">
                 <Clock className="h-5 w-5" />
@@ -212,7 +212,7 @@ export function OjtPortal() {
                   type="button"
                   onClick={timeIn}
                   disabled={isSaving || Boolean(openLog)}
-                  className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45"
+                  className="flex h-12 items-center justify-center gap-2 rounded-lg bg-primary px-5 text-base font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <LogIn className="h-4 w-4" /> {isSaving ? 'Saving...' : 'Time In'}
                 </button>
@@ -220,7 +220,7 @@ export function OjtPortal() {
                   type="button"
                   onClick={timeOut}
                   disabled={isSaving || !openLog}
-                  className="flex h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/70 disabled:cursor-not-allowed disabled:opacity-45"
+                  className="flex h-12 items-center justify-center gap-2 rounded-lg border border-primary bg-white px-5 text-base font-semibold text-primary shadow-sm disabled:cursor-not-allowed disabled:border-border disabled:text-foreground/50 disabled:opacity-45"
                 >
                   <LogOut className="h-4 w-4" /> {isSaving ? 'Saving...' : 'Time Out'}
                 </button>
@@ -229,7 +229,22 @@ export function OjtPortal() {
 
             <div className="rounded-lg border border-border bg-white p-5">
               <h2 className="text-lg font-semibold text-foreground">Recent Time Logs</h2>
-              <div className="mt-4 overflow-x-auto">
+              <div className="mt-4 grid gap-3 sm:hidden">
+                {logs.map((log) => (
+                  <div key={log.id} className="rounded-lg border border-border bg-[#f7f4f0] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">{log.log_date}</p>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-primary">{Number(log.rendered_hours).toFixed(2)} hrs</span>
+                    </div>
+                    <p className="mt-3 text-sm text-foreground/60">Time in: {formatDateTime(log.time_in)}</p>
+                    <p className="mt-1 text-sm text-foreground/60">Time out: {log.time_out ? formatDateTime(log.time_out) : 'Open'}</p>
+                  </div>
+                ))}
+                {logs.length === 0 && (
+                  <p className="rounded-lg bg-[#f7f4f0] p-5 text-center text-sm text-foreground/45">No time logs yet.</p>
+                )}
+              </div>
+              <div className="mt-4 hidden overflow-x-auto sm:block">
                 <table className="w-full min-w-[620px] text-left text-sm">
                   <thead className="border-b border-border text-xs uppercase tracking-wide text-foreground/45">
                     <tr>
@@ -267,7 +282,7 @@ export function OjtPortal() {
 function PortalShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-[#f7f4f0] text-foreground">
-      <div className="border-b border-border bg-white px-6 py-4">
+      <div className="border-b border-border bg-white px-4 py-4 sm:px-6">
         <p className="text-sm font-semibold text-primary">PSYZYGY Psychological Center Inc.</p>
       </div>
       {children}
@@ -277,9 +292,9 @@ function PortalShell({ children }: { children: ReactNode }) {
 
 function PortalCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-58px)] max-w-md items-center px-4">
-      <div className="w-full rounded-lg border border-border bg-white p-6 shadow-sm">
-        <h1 className="text-3xl font-normal text-foreground" style={{ fontFamily: 'var(--font-display)' }}>{title}</h1>
+    <div className="mx-auto flex min-h-[calc(100vh-58px)] w-full max-w-md items-center px-3 py-6 sm:px-4">
+      <div className="w-full rounded-lg border border-border bg-white p-5 shadow-sm sm:p-6">
+        <h1 className="text-3xl font-normal text-foreground sm:text-4xl" style={{ fontFamily: 'var(--font-display)' }}>{title}</h1>
         <p className="mb-6 mt-2 text-sm text-foreground/55">Login with your registered OJT email and date of birth.</p>
         {children}
       </div>
@@ -291,7 +306,7 @@ function Input({ label, value, onChange, type = 'text' }: { label: string; value
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">{label}</span>
-      <input value={value} onChange={(event) => onChange(event.target.value)} type={type} className="h-11 w-full rounded-lg border border-border bg-white px-3 text-sm outline-none focus:border-primary" />
+      <input value={value} onChange={(event) => onChange(event.target.value)} type={type} className="h-12 w-full rounded-lg border border-border bg-white px-3 text-base outline-none focus:border-primary sm:text-sm" />
     </label>
   );
 }
