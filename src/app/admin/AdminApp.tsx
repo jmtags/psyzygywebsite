@@ -1257,9 +1257,11 @@ export function AdminApp() {
       totalHours: trainee.totalHours,
       startDate: trainee.startDate || 'Start date',
       endDate: trainee.endDate || 'Completion date',
+      batchName: trainee.batchName,
+      ojtYear: (trainee.endDate || trainee.startDate || new Date().getFullYear().toString()).slice(0, 4),
     }));
 
-    void generateOjtCertificatePdf(certificateData, selected.length > 1 ? 'PSYZYGY OJT Batch' : selected[0]?.fullName);
+    void generateOjtCertificatePdf(certificateData, selected.length > 1 ? 'PSYZYGY OJT Batch' : selected[0]?.batchName);
   };
 
   if (!isSupabaseConfigured) {
