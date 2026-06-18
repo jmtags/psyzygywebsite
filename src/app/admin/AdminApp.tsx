@@ -1408,7 +1408,10 @@ export function AdminApp() {
                       type="file"
                       accept=".csv,text/csv"
                       className="sr-only"
-                      onChange={(event) => setOjtBatchFile(event.target.files?.[0] ?? null)}
+                      onChange={(event) => {
+                        setOjtBatchFile(event.target.files?.[0] ?? null);
+                        event.currentTarget.value = '';
+                      }}
                     />
                   </label>
                   <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-primary/35 px-4 text-sm font-semibold text-foreground/70">
@@ -1419,7 +1422,10 @@ export function AdminApp() {
                       accept="image/*"
                       multiple
                       className="sr-only"
-                      onChange={(event) => setOjtBatchPhotoFiles(Array.from(event.target.files ?? []))}
+                      onChange={(event) => {
+                        setOjtBatchPhotoFiles(Array.from(event.target.files ?? []));
+                        event.currentTarget.value = '';
+                      }}
                     />
                   </label>
                   <button type="button" onClick={uploadOjtBatch} disabled={!ojtBatchFile} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
@@ -1470,6 +1476,8 @@ export function AdminApp() {
                   onClose={() => {
                     setPendingOjtImport(null);
                     setSelectedDuplicateRows([]);
+                    setOjtBatchFile(null);
+                    setOjtBatchPhotoFiles([]);
                   }}
                 />
               )}
