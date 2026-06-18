@@ -118,10 +118,10 @@ const tabs: Array<{ key: TabKey; label: string; icon: LucideIcon; superOnly?: bo
 
 const emptyClinic = { id: '', name: '', slug: '', address: '', phone: '', email: '' };
 const emptyProfile: Profile = { id: '', full_name: '', role: 'clinic_admin', clinic_id: '', is_active: true };
-const ojtTemplateHeaders = ['full_name', 'school_name', 'course', 'batch_name', 'total_hours', 'start_date', 'end_date'];
+const ojtTemplateHeaders = ['full_name', 'school_name', 'course', 'batch_name', 'total_hours', 'start_date', 'end_date', 'photo_file'];
 const ojtTemplateRows = [
-  ['Juan Dela Cruz', 'University of Example', 'BS Psychology', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30'],
-  ['Maria Santos', 'Example State College', 'AB Psychology', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30'],
+  ['Juan Dela Cruz', 'University of Example', 'BS Psychology', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30', 'juan.jpg'],
+  ['Maria Santos', 'Example State College', 'AB Psychology', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30', 'maria.png'],
 ];
 
 function mapTraineeRow(row: TraineeRow): Trainee {
@@ -205,6 +205,10 @@ function isValidCsvDate(value: string) {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
+function normalizeFileName(value: string) {
+  return value.trim().toLowerCase();
+}
+
 export function AdminApp() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -235,6 +239,7 @@ export function AdminApp() {
   const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [traineePhotoFile, setTraineePhotoFile] = useState<File | null>(null);
   const [ojtBatchFile, setOjtBatchFile] = useState<File | null>(null);
+  const [ojtBatchPhotoFiles, setOjtBatchPhotoFiles] = useState<File[]>([]);
   const [newTrainee, setNewTrainee] = useState({
     fullName: '',
     schoolName: '',
@@ -721,7 +726,8 @@ export function AdminApp() {
     }
 
     const headerIndex = Object.fromEntries(headers.map((header, index) => [header, index]));
-    const rowsToInsert = [];
+    const selectedPhotoFiles = new Map(ojtBatchPhotoFiles.map((file) => [normalizeFileName(file.name), file]));
+    const rowsToImport = [];
 
     for (const [rowIndex, row] of parsedRows.slice(1).entries()) {
       const rowNumber = rowIndex + 2;
@@ -729,6 +735,7 @@ export function AdminApp() {
       const totalHoursValue = row[headerIndex.total_hours]?.trim() ?? '';
       const startDate = row[headerIndex.start_date]?.trim() ?? '';
       const endDate = row[headerIndex.end_date]?.trim() ?? '';
+      const photoFileName = row[headerIndex.photo_file]?.trim() ?? '';
       const totalHours = Number(totalHoursValue);
 
       if (!fullName) {
@@ -746,28 +753,79 @@ export function AdminApp() {
         return;
       }
 
-      rowsToInsert.push({
-        clinic_id: activeClinicId,
-        full_name: fullName,
-        school_name: row[headerIndex.school_name]?.trim() || null,
-        course: row[headerIndex.course]?.trim() || null,
-        total_hours: totalHoursValue ? totalHours : 0,
-        start_date: startDate || null,
-        end_date: endDate || null,
-        status: 'active' as OjtStatus,
-        notes: row[headerIndex.batch_name]?.trim() || null,
-        created_by: authUser?.id,
+      if (photoFileName && !selectedPhotoFiles.has(normalizeFileName(photoFileName))) {
+        setNotice(`Row ${rowNumber}: photo_file "${photoFileName}" was not selected.`);
+        return;
+      }
+
+      rowsToImport.push({
+        photoFileName,
+        payload: {
+          clinic_id: activeClinicId,
+          full_name: fullName,
+          school_name: row[headerIndex.school_name]?.trim() || null,
+          course: row[headerIndex.course]?.trim() || null,
+          total_hours: totalHoursValue ? totalHours : 0,
+          start_date: startDate || null,
+          end_date: endDate || null,
+          status: 'active' as OjtStatus,
+          notes: row[headerIndex.batch_name]?.trim() || null,
+          created_by: authUser?.id,
+        },
       });
     }
 
-    const { error } = await supabase.from('ojt_trainees').insert(rowsToInsert);
-    if (error) {
-      setNotice(error.message);
+    const { data: insertedRows, error } = await supabase
+      .from('ojt_trainees')
+      .insert(rowsToImport.map((row) => row.payload))
+      .select('id');
+
+    if (error || !insertedRows) {
+      setNotice(error?.message ?? 'Unable to import OJT trainees.');
       return;
     }
 
+    let uploadedPhotoCount = 0;
+    for (const [index, insertedRow] of insertedRows.entries()) {
+      const photoFileName = rowsToImport[index]?.photoFileName;
+      if (!photoFileName) {
+        continue;
+      }
+
+      const photoFile = selectedPhotoFiles.get(normalizeFileName(photoFileName));
+      if (!photoFile) {
+        continue;
+      }
+
+      const safeName = photoFile.name.replace(/[^a-zA-Z0-9.-]/g, '-');
+      const storagePath = `${activeClinicId}/${insertedRow.id}/${Date.now()}-${index}-${safeName}`;
+      const { error: uploadError } = await supabase.storage.from('ojt-photos').upload(storagePath, photoFile);
+
+      if (uploadError) {
+        setNotice(uploadError.message);
+        return;
+      }
+
+      const { data: publicUrlData } = supabase.storage.from('ojt-photos').getPublicUrl(storagePath);
+      const { error: photoUpdateError } = await supabase
+        .from('ojt_trainees')
+        .update({
+          photo_storage_path: storagePath,
+          photo_public_url: publicUrlData.publicUrl,
+        })
+        .eq('id', insertedRow.id);
+
+      if (photoUpdateError) {
+        setNotice(photoUpdateError.message);
+        return;
+      }
+
+      uploadedPhotoCount += 1;
+    }
+
     setOjtBatchFile(null);
-    setNotice(`${rowsToInsert.length} OJT trainee(s) imported.`);
+    setOjtBatchPhotoFiles([]);
+    setNotice(`${rowsToImport.length} OJT trainee(s) imported${uploadedPhotoCount ? ` with ${uploadedPhotoCount} photo(s)` : ''}.`);
     await loadAdminData();
   };
 
@@ -1047,7 +1105,7 @@ export function AdminApp() {
               <div className="mb-6 flex flex-col gap-3 rounded-lg border border-border bg-white p-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-foreground">Batch import OJT trainees</p>
-                  <p className="mt-1 text-xs text-foreground/55">Use the CSV template, then upload the completed file for the selected clinic.</p>
+                  <p className="mt-1 text-xs text-foreground/55">Use the CSV template, add photo filenames, then choose the matching image files before import.</p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <button type="button" onClick={downloadOjtTemplate} className="flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/70">
@@ -1061,6 +1119,17 @@ export function AdminApp() {
                       accept=".csv,text/csv"
                       className="sr-only"
                       onChange={(event) => setOjtBatchFile(event.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-primary/35 px-4 text-sm font-semibold text-foreground/70">
+                    <ImagePlus className="h-4 w-4 text-primary" />
+                    <span className="max-w-48 truncate">{ojtBatchPhotoFiles.length ? `${ojtBatchPhotoFiles.length} photo(s)` : 'Choose photos'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="sr-only"
+                      onChange={(event) => setOjtBatchPhotoFiles(Array.from(event.target.files ?? []))}
                     />
                   </label>
                   <button type="button" onClick={uploadOjtBatch} disabled={!ojtBatchFile} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
