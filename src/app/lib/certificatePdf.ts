@@ -128,7 +128,7 @@ export async function generateOjtCertificatePdf(trainees: CertificateTrainee[], 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(132, 108, 64);
-    pdf.text('CARE | GROWTH | EXCELLENCE', pageWidth / 2, 158, { align: 'center' });
+    pdf.text('Your mental healthcare with a heart', pageWidth / 2, 158, { align: 'center' });
 
     pdf.setFont('times', 'bold');
     pdf.setFontSize(36);
