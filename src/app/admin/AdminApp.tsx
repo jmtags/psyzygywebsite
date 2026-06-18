@@ -296,6 +296,26 @@ function isValidEmail(value: string) {
   return !value.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
+async function getFunctionErrorMessage(error: unknown) {
+  if (!error) {
+    return '';
+  }
+
+  const context = (error as { context?: Response }).context;
+  if (context) {
+    try {
+      const payload = await context.clone().json() as { error?: string };
+      if (payload.error) {
+        return payload.error;
+      }
+    } catch {
+      // Fall back to the Supabase error message below.
+    }
+  }
+
+  return (error as { message?: string }).message ?? 'Unable to complete request.';
+}
+
 export function AdminApp() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -635,6 +655,8 @@ export function AdminApp() {
       return;
     }
 
+    const nextEmail = newUserEmail.trim().toLowerCase();
+    const nextPassword = newUserPassword;
     const payload = {
       full_name: profileForm.full_name.trim(),
       role: profileForm.role,
@@ -642,19 +664,69 @@ export function AdminApp() {
       is_active: profileForm.is_active,
     };
 
-    const response = editingProfileId
-      ? await supabase.from('user_profiles').update(payload).eq('id', editingProfileId)
-      : await supabase.functions.invoke('admin-create-user', {
+    if (!payload.full_name) {
+      notify('Full name is required.', 'warning');
+      return;
+    }
+
+    if (payload.role !== 'super_admin' && !payload.clinic_id) {
+      notify('Clinic is required for clinic admin and staff users.', 'warning');
+      return;
+    }
+
+    if (!editingProfileId) {
+      if (!nextEmail || !isValidEmail(nextEmail)) {
+        notify('Enter a valid login email.', 'warning');
+        return;
+      }
+
+      if (nextPassword.length < 6) {
+        notify('Temporary password must be at least 6 characters.', 'warning');
+        return;
+      }
+
+      const response = await supabase.functions.invoke('admin-create-user', {
         body: {
-          email: newUserEmail,
-          password: newUserPassword,
+          email: nextEmail,
+          password: nextPassword,
           ...payload,
         },
       });
 
-    if (response.error) {
-      setNotice(response.error.message);
-      return;
+      if (response.error) {
+        notify(await getFunctionErrorMessage(response.error), 'error');
+        return;
+      }
+
+      notify('User login account created. They can now sign in with the email and temporary password.', 'success');
+    } else {
+      const profileResponse = await supabase.from('user_profiles').update(payload).eq('id', editingProfileId);
+      if (profileResponse.error) {
+        notify(profileResponse.error.message, 'error');
+        return;
+      }
+
+      if (nextPassword) {
+        if (nextPassword.length < 6) {
+          notify('New password must be at least 6 characters.', 'warning');
+          return;
+        }
+
+        const passwordResponse = await supabase.functions.invoke('admin-create-user', {
+          body: {
+            action: 'update-password',
+            user_id: editingProfileId,
+            password: nextPassword,
+          },
+        });
+
+        if (passwordResponse.error) {
+          notify(await getFunctionErrorMessage(passwordResponse.error), 'error');
+          return;
+        }
+      }
+
+      notify(nextPassword ? 'User profile and password updated.' : 'User profile updated.', 'success');
     }
 
     setProfileForm(emptyProfile);
@@ -2010,7 +2082,12 @@ function UserCrud({
             <Input label="Temporary password" value={password} onChange={setPassword} type="password" />
           </>
         )}
-        {editingId && <Input label="Auth User ID" value={form.id} onChange={(value) => setForm({ ...form, id: value })} />}
+        {editingId && (
+          <>
+            <Input label="Auth User ID" value={form.id} onChange={(value) => setForm({ ...form, id: value })} />
+            <Input label="New password (optional)" value={password} onChange={setPassword} type="password" />
+          </>
+        )}
         <Input label="Full name" value={form.full_name} onChange={(value) => setForm({ ...form, full_name: value })} />
         <label className="block">
           <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Role</span>
@@ -2065,7 +2142,7 @@ function UserCrud({
                 <td className="py-4 pr-4 text-xs text-foreground/45">{userProfile.id}</td>
                 <td className="py-4 pr-4">
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => { setEditingId(userProfile.id); setForm(userProfile); }} className="flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold">
+                    <button type="button" onClick={() => { setEditingId(userProfile.id); setForm(userProfile); setEmail(''); setPassword(''); }} className="flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold">
                       <Pencil className="h-3.5 w-3.5" /> Edit
                     </button>
                     <button type="button" onClick={() => onDelete(userProfile.id)} className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600">

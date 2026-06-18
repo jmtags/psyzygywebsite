@@ -45,6 +45,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
+    const action = String(body.action ?? 'create');
     const email = String(body.email ?? '').trim().toLowerCase();
     const password = String(body.password ?? '');
     const fullName = String(body.full_name ?? '').trim();
@@ -52,8 +53,31 @@ Deno.serve(async (req) => {
     const clinicId = body.clinic_id || null;
     const isActive = body.is_active !== false;
 
+    if (action === 'update-password') {
+      const userId = String(body.user_id ?? '').trim();
+
+      if (!userId || password.length < 6) {
+        return json({ error: 'Auth user ID and a password with at least 6 characters are required.' }, 400);
+      }
+
+      const { error: updatePasswordError } = await adminClient.auth.admin.updateUserById(userId, {
+        password,
+        email_confirm: true,
+      });
+
+      if (updatePasswordError) {
+        return json({ error: updatePasswordError.message }, 400);
+      }
+
+      return json({ user_id: userId });
+    }
+
     if (!email || !password || !fullName || !['super_admin', 'clinic_admin', 'staff'].includes(role)) {
       return json({ error: 'Email, password, full name, and valid role are required.' }, 400);
+    }
+
+    if (password.length < 6) {
+      return json({ error: 'Password must be at least 6 characters.' }, 400);
     }
 
     if (role !== 'super_admin' && !clinicId) {
