@@ -13,6 +13,7 @@ type PortalProfile = {
   rendered_hours: number;
   status: string;
   clinic_name: string;
+  photo_public_url: string | null;
 };
 
 type PortalLog = {
@@ -338,6 +339,22 @@ function StudentInfoDialog({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <div className="mb-5 flex flex-col items-center text-center">
+            {profile.photo_public_url ? (
+              <img
+                src={profile.photo_public_url}
+                alt={`${profile.full_name} profile`}
+                className="h-28 w-28 rounded-full border-4 border-[#f7f4f0] object-cover shadow-sm"
+              />
+            ) : (
+              <div className="flex h-28 w-28 items-center justify-center rounded-full border-4 border-[#f7f4f0] bg-primary/10 text-3xl font-semibold text-primary shadow-sm">
+                {getInitials(profile.full_name)}
+              </div>
+            )}
+            <p className="mt-3 text-sm font-semibold text-foreground">{profile.full_name}</p>
+            <p className="text-xs text-foreground/50">{profile.school_name || 'School not provided'}</p>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <Detail label="Email" value={email || 'Not provided'} />
             <Detail label="Date of birth" value={dateOfBirth || 'Not provided'} />
@@ -431,4 +448,13 @@ function formatDateTime(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
 }
