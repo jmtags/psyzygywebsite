@@ -22,6 +22,8 @@ type PortalLog = {
   time_in: string;
   time_out: string | null;
   rendered_hours: number;
+  notes: string | null;
+  approval_status: 'pending' | 'approved' | 'rejected';
 };
 
 type NoticeType = 'success' | 'warning' | 'error';
@@ -36,6 +38,7 @@ export function OjtPortal() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [dailyNotes, setDailyNotes] = useState('');
 
   const openLog = useMemo(() => logs.find((log) => !log.time_out) ?? null, [logs]);
   const progress = profile?.required_hours ? Math.min(100, Math.round((Number(profile.rendered_hours) / profile.required_hours) * 100)) : 0;
@@ -121,11 +124,12 @@ export function OjtPortal() {
     }
 
     setIsSaving(true);
-    const { error } = await supabase.rpc('ojt_portal_time_out', { p_email: email.trim(), p_date_of_birth: dateOfBirth });
+    const { error } = await supabase.rpc('ojt_portal_time_out', { p_email: email.trim(), p_date_of_birth: dateOfBirth, p_notes: dailyNotes.trim() || null });
     if (error) {
       notify(error.message, 'error');
     } else {
-      notify('Time out recorded.', 'success');
+      notify('Time out recorded and sent for admin approval.', 'success');
+      setDailyNotes('');
       await loadPortalData();
     }
     setIsSaving(false);
@@ -193,6 +197,17 @@ export function OjtPortal() {
                 <button type="button" onClick={logout} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-red-700">
                   <LogOut className="h-4 w-4" /> Logout
                 </button>
+                {openLog && (
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Daily notes</span>
+                    <textarea
+                      value={dailyNotes}
+                      onChange={(event) => setDailyNotes(event.target.value)}
+                      placeholder="Assisted intake forms, observed session, encoded files..."
+                      className="min-h-24 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+                    />
+                  </label>
+                )}
               </div>
             </div>
 
@@ -249,6 +264,8 @@ export function OjtPortal() {
                     </div>
                     <p className="mt-3 text-sm text-foreground/60">Time in: {formatDateTime(log.time_in)}</p>
                     <p className="mt-1 text-sm text-foreground/60">Time out: {log.time_out ? formatDateTime(log.time_out) : 'Open'}</p>
+                    <p className="mt-1 text-sm text-foreground/60">Status: <span className="font-semibold capitalize">{log.approval_status}</span></p>
+                    {log.notes && <p className="mt-2 text-sm text-foreground/60">{log.notes}</p>}
                   </div>
                 ))}
                 {logs.length === 0 && (
@@ -263,6 +280,7 @@ export function OjtPortal() {
                       <th className="py-3 pr-4">Time In</th>
                       <th className="py-3 pr-4">Time Out</th>
                       <th className="py-3 pr-4">Hours</th>
+                      <th className="py-3 pr-4">Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -272,11 +290,12 @@ export function OjtPortal() {
                         <td className="py-3 pr-4 text-foreground/60">{formatDateTime(log.time_in)}</td>
                         <td className="py-3 pr-4 text-foreground/60">{log.time_out ? formatDateTime(log.time_out) : 'Open'}</td>
                         <td className="py-3 pr-4 text-foreground/60">{Number(log.rendered_hours).toFixed(2)}</td>
+                        <td className="py-3 pr-4 text-foreground/60 capitalize">{log.approval_status}</td>
                       </tr>
                     ))}
                     {logs.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="py-6 text-center text-foreground/45">No time logs yet.</td>
+                        <td colSpan={5} className="py-6 text-center text-foreground/45">No time logs yet.</td>
                       </tr>
                     )}
                   </tbody>

@@ -93,6 +93,10 @@ type OjtTimeLog = {
   time_in: string;
   time_out: string | null;
   rendered_hours: number;
+  notes: string | null;
+  approval_status: 'pending' | 'approved' | 'rejected';
+  approved_by: string | null;
+  approved_at: string | null;
 };
 
 type OjtImportRow = {
@@ -357,6 +361,7 @@ export function AdminApp() {
   const [isSavingTrainee, setIsSavingTrainee] = useState(false);
   const [isSavingEditedTrainee, setIsSavingEditedTrainee] = useState(false);
   const [deletingTraineeId, setDeletingTraineeId] = useState<string | null>(null);
+  const [reviewingTimeLogId, setReviewingTimeLogId] = useState<string | null>(null);
   const [isImportingOjt, setIsImportingOjt] = useState(false);
   const [ojtSearch, setOjtSearch] = useState('');
   const [ojtStatusFilter, setOjtStatusFilter] = useState<'all' | OjtStatus>('all');
@@ -406,7 +411,9 @@ export function AdminApp() {
   const loggedHoursByTrainee = useMemo(() => {
     const totals = new Map<string, number>();
     ojtTimeLogs.forEach((log) => {
-      totals.set(log.trainee_id, (totals.get(log.trainee_id) ?? 0) + Number(log.rendered_hours || 0));
+      if (log.approval_status === 'approved') {
+        totals.set(log.trainee_id, (totals.get(log.trainee_id) ?? 0) + Number(log.rendered_hours || 0));
+      }
     });
     return totals;
   }, [ojtTimeLogs]);
@@ -511,7 +518,7 @@ export function AdminApp() {
 
     const { data: timeLogRows, error: timeLogsError } = await supabase
       .from('ojt_time_logs')
-      .select('id, trainee_id, clinic_id, log_date, time_in, time_out, rendered_hours')
+      .select('id, trainee_id, clinic_id, log_date, time_in, time_out, rendered_hours, notes, approval_status, approved_by, approved_at')
       .order('time_in', { ascending: false })
       .limit(3000);
 
@@ -1307,6 +1314,57 @@ export function AdminApp() {
     notify(`${completedName} was marked completed.`, 'success');
   };
 
+  const reviewTimeLog = async (log: OjtTimeLog, status: 'approved' | 'rejected', adjustedHours?: number) => {
+    if (!supabase || reviewingTimeLogId) {
+      return;
+    }
+
+    clearNotice();
+    setReviewingTimeLogId(log.id);
+    try {
+      const payload = {
+        approval_status: status,
+        approved_by: status === 'approved' ? authUser?.id ?? null : null,
+        approved_at: status === 'approved' ? new Date().toISOString() : null,
+        ...(typeof adjustedHours === 'number' ? { rendered_hours: adjustedHours } : {}),
+      };
+
+      const { error } = await supabase
+        .from('ojt_time_logs')
+        .update(payload)
+        .eq('id', log.id);
+
+      if (error) {
+        notify(error.message, 'error');
+        return;
+      }
+
+      setOjtTimeLogs((current) => current.map((item) => (
+        item.id === log.id
+          ? { ...item, ...payload, rendered_hours: typeof adjustedHours === 'number' ? adjustedHours : item.rendered_hours }
+          : item
+      )));
+      notify(`Time log ${status}.`, 'success');
+    } finally {
+      setReviewingTimeLogId(null);
+    }
+  };
+
+  const adjustTimeLog = async (log: OjtTimeLog) => {
+    const nextHours = window.prompt('Enter approved rendered hours:', Number(log.rendered_hours).toFixed(2));
+    if (nextHours === null) {
+      return;
+    }
+
+    const parsedHours = Number(nextHours);
+    if (!Number.isFinite(parsedHours) || parsedHours < 0 || parsedHours > 24) {
+      notify('Rendered hours must be a number from 0 to 24.', 'warning');
+      return;
+    }
+
+    await reviewTimeLog(log, 'approved', Math.round(parsedHours * 100) / 100);
+  };
+
   const saveEditedTrainee = async () => {
     if (!supabase || !editingTrainee || isSavingEditedTrainee) {
       return;
@@ -1776,6 +1834,10 @@ export function AdminApp() {
                   timeLogs={ojtTimeLogs.filter((log) => log.trainee_id === selectedTrainee.id)}
                   loggedHours={loggedHoursByTrainee.get(selectedTrainee.id) ?? 0}
                   clinicName={clinics.find((clinic) => clinic.id === selectedTrainee.clinicId)?.name ?? 'Clinic'}
+                  reviewingLogId={reviewingTimeLogId}
+                  onApproveLog={(log) => reviewTimeLog(log, 'approved')}
+                  onRejectLog={(log) => reviewTimeLog(log, 'rejected')}
+                  onAdjustLog={adjustTimeLog}
                   onClose={() => setSelectedTrainee(null)}
                 />
               )}
@@ -2443,12 +2505,20 @@ function OjtDetailsDialog({
   timeLogs,
   loggedHours,
   clinicName,
+  reviewingLogId,
+  onApproveLog,
+  onRejectLog,
+  onAdjustLog,
   onClose,
 }: {
   trainee: Trainee;
   timeLogs: OjtTimeLog[];
   loggedHours: number;
   clinicName: string;
+  reviewingLogId: string | null;
+  onApproveLog: (log: OjtTimeLog) => void;
+  onRejectLog: (log: OjtTimeLog) => void;
+  onAdjustLog: (log: OjtTimeLog) => void;
   onClose: () => void;
 }) {
   return (
@@ -2488,15 +2558,42 @@ function OjtDetailsDialog({
           </div>
         </div>
         <div className="border-t border-border p-5">
-          <h4 className="text-sm font-semibold text-foreground">Recent time logs</h4>
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[620px] text-left text-sm">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h4 className="text-sm font-semibold text-foreground">Recent time logs</h4>
+              <p className="text-xs text-foreground/50">Only approved logs count toward rendered hours.</p>
+            </div>
+            <span className="text-xs font-semibold text-primary">{timeLogs.filter((log) => log.approval_status === 'pending' && log.time_out).length} pending review</span>
+          </div>
+          <div className="mt-3 grid gap-3 md:hidden">
+            {timeLogs.slice(0, 12).map((log) => (
+              <div key={log.id} className="rounded-lg border border-border bg-[#f7f4f0] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-foreground">{log.log_date}</p>
+                  <ApprovalPill status={log.approval_status} />
+                </div>
+                <p className="mt-3 text-sm text-foreground/60">Time in: {formatAdminDateTime(log.time_in)}</p>
+                <p className="mt-1 text-sm text-foreground/60">Time out: {log.time_out ? formatAdminDateTime(log.time_out) : 'Open'}</p>
+                <p className="mt-1 text-sm text-foreground/60">Hours: {Number(log.rendered_hours).toFixed(2)}</p>
+                {log.notes && <p className="mt-2 text-sm text-foreground/60">{log.notes}</p>}
+                <TimeLogActions log={log} reviewingLogId={reviewingLogId} onApprove={onApproveLog} onReject={onRejectLog} onAdjust={onAdjustLog} />
+              </div>
+            ))}
+            {timeLogs.length === 0 && (
+              <p className="rounded-lg bg-[#f7f4f0] p-5 text-center text-sm text-foreground/45">No time logs yet.</p>
+            )}
+          </div>
+          <div className="mt-3 hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[820px] text-left text-sm">
               <thead className="border-b border-border text-xs uppercase tracking-wide text-foreground/45">
                 <tr>
                   <th className="py-3 pr-4">Date</th>
                   <th className="py-3 pr-4">Time in</th>
                   <th className="py-3 pr-4">Time out</th>
                   <th className="py-3 pr-4">Hours</th>
+                  <th className="py-3 pr-4">Status</th>
+                  <th className="py-3 pr-4">Notes</th>
+                  <th className="py-3 pr-4">Review</th>
                 </tr>
               </thead>
               <tbody>
@@ -2506,11 +2603,16 @@ function OjtDetailsDialog({
                     <td className="py-3 pr-4 text-foreground/60">{formatAdminDateTime(log.time_in)}</td>
                     <td className="py-3 pr-4 text-foreground/60">{log.time_out ? formatAdminDateTime(log.time_out) : 'Open'}</td>
                     <td className="py-3 pr-4 text-foreground/60">{Number(log.rendered_hours).toFixed(2)}</td>
+                    <td className="py-3 pr-4"><ApprovalPill status={log.approval_status} /></td>
+                    <td className="max-w-[220px] py-3 pr-4 text-foreground/60" style={adminClampStyle(2)}>{log.notes || '-'}</td>
+                    <td className="py-3 pr-4">
+                      <TimeLogActions log={log} reviewingLogId={reviewingLogId} onApprove={onApproveLog} onReject={onRejectLog} onAdjust={onAdjustLog} />
+                    </td>
                   </tr>
                 ))}
                 {timeLogs.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-5 text-center text-foreground/45">No time logs yet.</td>
+                    <td colSpan={7} className="py-5 text-center text-foreground/45">No time logs yet.</td>
                   </tr>
                 )}
               </tbody>
@@ -2606,6 +2708,49 @@ function DetailItem({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg bg-[#f7f4f0] px-4 py-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-foreground/45">{label}</p>
       <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function ApprovalPill({ status }: { status: OjtTimeLog['approval_status'] }) {
+  const styles = {
+    pending: 'bg-amber-50 text-amber-700',
+    approved: 'bg-emerald-50 text-emerald-700',
+    rejected: 'bg-red-50 text-red-700',
+  };
+
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${styles[status]}`}>{status}</span>;
+}
+
+function TimeLogActions({
+  log,
+  reviewingLogId,
+  onApprove,
+  onReject,
+  onAdjust,
+}: {
+  log: OjtTimeLog;
+  reviewingLogId: string | null;
+  onApprove: (log: OjtTimeLog) => void;
+  onReject: (log: OjtTimeLog) => void;
+  onAdjust: (log: OjtTimeLog) => void;
+}) {
+  if (!log.time_out) {
+    return <span className="text-xs text-foreground/45">Open log</span>;
+  }
+
+  const isReviewing = reviewingLogId === log.id;
+  return (
+    <div className="mt-3 flex flex-wrap gap-2 md:mt-0">
+      <button type="button" onClick={() => onApprove(log)} disabled={isReviewing} className="h-8 rounded-lg border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40">
+        {isReviewing ? 'Saving...' : 'Approve'}
+      </button>
+      <button type="button" onClick={() => onAdjust(log)} disabled={isReviewing} className="h-8 rounded-lg border border-border bg-white px-3 text-xs font-semibold text-foreground/65 disabled:cursor-not-allowed disabled:opacity-40">
+        Adjust
+      </button>
+      <button type="button" onClick={() => onReject(log)} disabled={isReviewing} className="h-8 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-40">
+        Reject
+      </button>
     </div>
   );
 }
