@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Clock, LogIn, LogOut, RefreshCw } from 'lucide-react';
+import { Clock, LogIn, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 
 type PortalProfile = {
@@ -34,6 +34,7 @@ export function OjtPortal() {
   const [noticeType, setNoticeType] = useState<NoticeType>('warning');
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const openLog = useMemo(() => logs.find((log) => !log.time_out) ?? null, [logs]);
   const progress = profile?.required_hours ? Math.min(100, Math.round((Number(profile.rendered_hours) / profile.required_hours) * 100)) : 0;
@@ -136,6 +137,7 @@ export function OjtPortal() {
     setEmail('');
     setDateOfBirth('');
     setNotice('');
+    setIsProfileOpen(false);
   };
 
   if (!isSupabaseConfigured) {
@@ -172,7 +174,15 @@ export function OjtPortal() {
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/60">OJT Portal</p>
-                <h1 className="mt-2 text-2xl font-normal text-foreground sm:text-3xl" style={{ fontFamily: 'var(--font-display)' }}>{profile.full_name}</h1>
+                <button
+                  type="button"
+                  onClick={() => setIsProfileOpen(true)}
+                  className="mt-2 flex min-w-0 items-center gap-2 text-left text-2xl font-normal text-foreground underline-offset-4 transition hover:text-primary hover:underline sm:text-3xl"
+                  style={{ fontFamily: 'var(--font-display)' }}
+                >
+                  <UserRound className="h-6 w-6 shrink-0 text-primary" />
+                  <span className="truncate">{profile.full_name}</span>
+                </button>
                 <p className="mt-1 text-sm text-foreground/55">{profile.school_name || 'School not provided'} | {profile.clinic_name}</p>
               </div>
               <div className="grid gap-2 sm:flex sm:gap-2">
@@ -273,9 +283,82 @@ export function OjtPortal() {
               </div>
             </div>
           </div>
+
+          {isProfileOpen && (
+            <StudentInfoDialog
+              profile={profile}
+              email={email}
+              dateOfBirth={dateOfBirth}
+              progress={progress}
+              onClose={() => setIsProfileOpen(false)}
+            />
+          )}
         </div>
       )}
     </PortalShell>
+  );
+}
+
+function StudentInfoDialog({
+  profile,
+  email,
+  dateOfBirth,
+  progress,
+  onClose,
+}: {
+  profile: PortalProfile;
+  email: string;
+  dateOfBirth: string;
+  progress: number;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-3 py-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="student-info-title">
+      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close student information" onClick={onClose} />
+      <div className="relative w-full max-w-lg rounded-lg border border-border bg-white p-5 shadow-xl sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/60">Student Information</p>
+            <h2 id="student-info-title" className="mt-2 truncate text-2xl font-semibold text-foreground">{profile.full_name}</h2>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border text-foreground/60 hover:text-foreground" aria-label="Close">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <Detail label="Email" value={email || 'Not provided'} />
+          <Detail label="Date of birth" value={dateOfBirth || 'Not provided'} />
+          <Detail label="School" value={profile.school_name || 'Not provided'} />
+          <Detail label="Course" value={profile.course || 'Not provided'} />
+          <Detail label="Clinic" value={profile.clinic_name} />
+          <Detail label="Status" value={profile.status} />
+          <Detail label="Required hours" value={String(profile.required_hours)} />
+          <Detail label="Rendered hours" value={Number(profile.rendered_hours).toFixed(2)} />
+        </div>
+
+        <div className="mt-5 rounded-lg bg-[#f7f4f0] p-4">
+          <div className="flex items-center justify-between gap-3 text-sm font-semibold">
+            <span className="text-foreground/60">Completion Progress</span>
+            <span className="text-primary">{progress}%</span>
+          </div>
+          <div className="mt-3 h-3 overflow-hidden rounded-full bg-white">
+            <div className="h-full bg-primary" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -316,6 +399,15 @@ function Metric({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg bg-[#f7f4f0] px-4 py-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-foreground/45">{label}</p>
       <p className="mt-1 text-2xl font-semibold text-primary">{value}</p>
+    </div>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-white px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-foreground/45">{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold text-foreground">{value}</p>
     </div>
   );
 }
