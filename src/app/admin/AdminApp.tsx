@@ -77,6 +77,28 @@ type TraineeRow = {
   photo_storage_path: string | null;
 };
 
+type OjtImportRow = {
+  rowNumber: number;
+  photoFileName: string;
+  payload: {
+    clinic_id: string;
+    full_name: string;
+    school_name: string | null;
+    course: string | null;
+    total_hours: number;
+    start_date: string | null;
+    end_date: string | null;
+    status: OjtStatus;
+    notes: string | null;
+    created_by: string | undefined;
+  };
+};
+
+type OjtDuplicateReview = {
+  row: OjtImportRow;
+  existing: Trainee;
+};
+
 type EventPhoto = {
   id: string;
   storage_path: string;
@@ -245,6 +267,10 @@ function normalizeFileName(value: string) {
   return value.trim().toLowerCase();
 }
 
+function normalizeRecordKey(value: string) {
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 export function AdminApp() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -276,6 +302,12 @@ export function AdminApp() {
   const [traineePhotoFile, setTraineePhotoFile] = useState<File | null>(null);
   const [ojtBatchFile, setOjtBatchFile] = useState<File | null>(null);
   const [ojtBatchPhotoFiles, setOjtBatchPhotoFiles] = useState<File[]>([]);
+  const [pendingOjtImport, setPendingOjtImport] = useState<{
+    rows: OjtImportRow[];
+    missingPhotoFiles: string[];
+    duplicates: OjtDuplicateReview[];
+  } | null>(null);
+  const [selectedDuplicateRows, setSelectedDuplicateRows] = useState<number[]>([]);
   const [newTrainee, setNewTrainee] = useState({
     fullName: '',
     schoolName: '',
@@ -740,6 +772,109 @@ export function AdminApp() {
     URL.revokeObjectURL(url);
   };
 
+  const saveOjtImportRows = async (
+    rowsToImport: OjtImportRow[],
+    missingPhotoFiles: string[],
+    overrideIdsByRowNumber = new Map<number, string>(),
+  ) => {
+    if (!supabase || !activeClinicId) {
+      return;
+    }
+
+    const selectedPhotoFiles = new Map(ojtBatchPhotoFiles.map((file) => [normalizeFileName(file.name), file]));
+    let uploadedPhotoCount = 0;
+    let savedRowCount = 0;
+
+    const uploadImportPhoto = async (traineeId: string, photoFileName: string, index: number) => {
+      if (!photoFileName) {
+        return true;
+      }
+
+      const photoFile = selectedPhotoFiles.get(normalizeFileName(photoFileName));
+      if (!photoFile) {
+        return true;
+      }
+
+      const safeName = photoFile.name.replace(/[^a-zA-Z0-9.-]/g, '-');
+      const storagePath = `${activeClinicId}/${traineeId}/${Date.now()}-${index}-${safeName}`;
+      const { error: uploadError } = await supabase.storage.from('ojt-photos').upload(storagePath, photoFile);
+
+      if (uploadError) {
+        setNotice(uploadError.message);
+        return false;
+      }
+
+      const { data: publicUrlData } = supabase.storage.from('ojt-photos').getPublicUrl(storagePath);
+      const { error: photoUpdateError } = await supabase
+        .from('ojt_trainees')
+        .update({
+          photo_storage_path: storagePath,
+          photo_public_url: publicUrlData.publicUrl,
+        })
+        .eq('id', traineeId);
+
+      if (photoUpdateError) {
+        setNotice(photoUpdateError.message);
+        return false;
+      }
+
+      uploadedPhotoCount += 1;
+      return true;
+    };
+
+    const rowsToInsert = rowsToImport.filter((row) => !overrideIdsByRowNumber.has(row.rowNumber));
+    if (rowsToInsert.length > 0) {
+      const { data: insertedRows, error } = await supabase
+        .from('ojt_trainees')
+        .insert(rowsToInsert.map((row) => row.payload))
+        .select('id');
+
+      if (error || !insertedRows) {
+        setNotice(error?.message ?? 'Unable to import OJT trainees.');
+        return;
+      }
+
+      savedRowCount += insertedRows.length;
+      for (const [index, insertedRow] of insertedRows.entries()) {
+        const ok = await uploadImportPhoto(insertedRow.id, rowsToInsert[index]?.photoFileName ?? '', index);
+        if (!ok) {
+          return;
+        }
+      }
+    }
+
+    for (const [index, row] of rowsToImport.entries()) {
+      const existingId = overrideIdsByRowNumber.get(row.rowNumber);
+      if (!existingId) {
+        continue;
+      }
+
+      const { error } = await supabase
+        .from('ojt_trainees')
+        .update(row.payload)
+        .eq('id', existingId);
+
+      if (error) {
+        setNotice(error.message);
+        return;
+      }
+
+      savedRowCount += 1;
+      const ok = await uploadImportPhoto(existingId, row.photoFileName, index);
+      if (!ok) {
+        return;
+      }
+    }
+
+    setOjtBatchFile(null);
+    setOjtBatchPhotoFiles([]);
+    setPendingOjtImport(null);
+    setSelectedDuplicateRows([]);
+    const skippedPhotoCount = missingPhotoFiles.length;
+    setNotice(`${savedRowCount} OJT trainee(s) saved${uploadedPhotoCount ? ` with ${uploadedPhotoCount} photo(s)` : ''}${skippedPhotoCount ? `; ${skippedPhotoCount} photo filename(s) were not selected and were skipped` : ''}.`);
+    await loadAdminData();
+  };
+
   const uploadOjtBatch = async () => {
     if (!supabase || !activeClinicId || !ojtBatchFile) {
       return;
@@ -763,7 +898,7 @@ export function AdminApp() {
 
     const headerIndex = Object.fromEntries(headers.map((header, index) => [header, index]));
     const selectedPhotoFiles = new Map(ojtBatchPhotoFiles.map((file) => [normalizeFileName(file.name), file]));
-    const rowsToImport = [];
+    const rowsToImport: OjtImportRow[] = [];
     const missingPhotoFiles = new Set<string>();
 
     for (const [rowIndex, row] of parsedRows.slice(1).entries()) {
@@ -797,6 +932,7 @@ export function AdminApp() {
       }
 
       rowsToImport.push({
+        rowNumber,
         photoFileName,
         payload: {
           clinic_id: activeClinicId,
@@ -813,59 +949,103 @@ export function AdminApp() {
       });
     }
 
-    const { data: insertedRows, error } = await supabase
-      .from('ojt_trainees')
-      .insert(rowsToImport.map((row) => row.payload))
-      .select('id');
+    const duplicates = rowsToImport
+      .map((row) => {
+        const existing = visibleTrainees.find((trainee) => (
+          trainee.clinicId === activeClinicId &&
+          normalizeRecordKey(trainee.fullName) === normalizeRecordKey(row.payload.full_name)
+        ));
 
-    if (error || !insertedRows) {
-      setNotice(error?.message ?? 'Unable to import OJT trainees.');
+        return existing ? { row, existing } : null;
+      })
+      .filter((review): review is OjtDuplicateReview => Boolean(review));
+
+    if (duplicates.length > 0) {
+      setPendingOjtImport({
+        rows: rowsToImport,
+        missingPhotoFiles: Array.from(missingPhotoFiles),
+        duplicates,
+      });
+      setSelectedDuplicateRows(duplicates.map((duplicate) => duplicate.row.rowNumber));
+      setNotice(`${duplicates.length} existing OJT record(s) found. Review duplicates before importing.`);
       return;
     }
 
-    let uploadedPhotoCount = 0;
-    for (const [index, insertedRow] of insertedRows.entries()) {
-      const photoFileName = rowsToImport[index]?.photoFileName;
-      if (!photoFileName) {
-        continue;
-      }
+    await saveOjtImportRows(rowsToImport, Array.from(missingPhotoFiles));
+  };
 
-      const photoFile = selectedPhotoFiles.get(normalizeFileName(photoFileName));
-      if (!photoFile) {
-        continue;
-      }
-
-      const safeName = photoFile.name.replace(/[^a-zA-Z0-9.-]/g, '-');
-      const storagePath = `${activeClinicId}/${insertedRow.id}/${Date.now()}-${index}-${safeName}`;
-      const { error: uploadError } = await supabase.storage.from('ojt-photos').upload(storagePath, photoFile);
-
-      if (uploadError) {
-        setNotice(uploadError.message);
-        return;
-      }
-
-      const { data: publicUrlData } = supabase.storage.from('ojt-photos').getPublicUrl(storagePath);
-      const { error: photoUpdateError } = await supabase
-        .from('ojt_trainees')
-        .update({
-          photo_storage_path: storagePath,
-          photo_public_url: publicUrlData.publicUrl,
-        })
-        .eq('id', insertedRow.id);
-
-      if (photoUpdateError) {
-        setNotice(photoUpdateError.message);
-        return;
-      }
-
-      uploadedPhotoCount += 1;
+  const overrideSelectedOjtDuplicates = async () => {
+    if (!pendingOjtImport) {
+      return;
     }
 
-    setOjtBatchFile(null);
-    setOjtBatchPhotoFiles([]);
-    const skippedPhotoCount = missingPhotoFiles.size;
-    setNotice(`${rowsToImport.length} OJT trainee(s) imported${uploadedPhotoCount ? ` with ${uploadedPhotoCount} photo(s)` : ''}${skippedPhotoCount ? `; ${skippedPhotoCount} photo filename(s) were not selected and were skipped` : ''}.`);
-    await loadAdminData();
+    const selectedRows = new Set(selectedDuplicateRows);
+    const duplicateRows = new Set(pendingOjtImport.duplicates.map((duplicate) => duplicate.row.rowNumber));
+    const overrides = new Map<number, string>();
+
+    pendingOjtImport.duplicates.forEach((duplicate) => {
+      if (selectedRows.has(duplicate.row.rowNumber)) {
+        overrides.set(duplicate.row.rowNumber, duplicate.existing.id);
+      }
+    });
+
+    const rowsToSave = pendingOjtImport.rows.filter((row) => (
+      !duplicateRows.has(row.rowNumber) || selectedRows.has(row.rowNumber)
+    ));
+
+    await saveOjtImportRows(rowsToSave, pendingOjtImport.missingPhotoFiles, overrides);
+  };
+
+  const rejectSelectedOjtDuplicates = async () => {
+    if (!pendingOjtImport) {
+      return;
+    }
+
+    const selectedRows = new Set(selectedDuplicateRows);
+    const remainingDuplicates = pendingOjtImport.duplicates.filter((duplicate) => !selectedRows.has(duplicate.row.rowNumber));
+    const remainingRows = pendingOjtImport.rows.filter((row) => !selectedRows.has(row.rowNumber));
+
+    if (remainingDuplicates.length > 0) {
+      setPendingOjtImport({ ...pendingOjtImport, rows: remainingRows, duplicates: remainingDuplicates });
+      setSelectedDuplicateRows(remainingDuplicates.map((duplicate) => duplicate.row.rowNumber));
+      return;
+    }
+
+    await saveOjtImportRows(remainingRows, pendingOjtImport.missingPhotoFiles);
+  };
+
+  const deleteSelectedOjtExistingRecords = async () => {
+    if (!supabase || !pendingOjtImport || selectedDuplicateRows.length === 0) {
+      return;
+    }
+
+    if (!window.confirm('Delete selected existing OJT records and continue importing their uploaded rows?')) {
+      return;
+    }
+
+    const selectedRows = new Set(selectedDuplicateRows);
+    const selectedExistingIds = pendingOjtImport.duplicates
+      .filter((duplicate) => selectedRows.has(duplicate.row.rowNumber))
+      .map((duplicate) => duplicate.existing.id);
+
+    const { error } = await supabase
+      .from('ojt_trainees')
+      .delete()
+      .in('id', selectedExistingIds);
+
+    if (error) {
+      setNotice(error.message);
+      return;
+    }
+
+    const remainingDuplicates = pendingOjtImport.duplicates.filter((duplicate) => !selectedRows.has(duplicate.row.rowNumber));
+    if (remainingDuplicates.length > 0) {
+      setPendingOjtImport({ ...pendingOjtImport, duplicates: remainingDuplicates });
+      setSelectedDuplicateRows(remainingDuplicates.map((duplicate) => duplicate.row.rowNumber));
+      return;
+    }
+
+    await saveOjtImportRows(pendingOjtImport.rows, pendingOjtImport.missingPhotoFiles);
   };
 
   const markCompleted = async (id: string) => {
@@ -1177,6 +1357,20 @@ export function AdminApp() {
                 </div>
               </div>
               <TraineeTable trainees={visibleTrainees} clinics={clinics} onComplete={markCompleted} onCertificate={(trainee) => generateCertificates([trainee])} />
+              {pendingOjtImport && (
+                <OjtDuplicateDialog
+                  duplicates={pendingOjtImport.duplicates}
+                  selectedRows={selectedDuplicateRows}
+                  setSelectedRows={setSelectedDuplicateRows}
+                  onOverrideSelected={overrideSelectedOjtDuplicates}
+                  onRejectSelected={rejectSelectedOjtDuplicates}
+                  onDeleteExistingSelected={deleteSelectedOjtExistingRecords}
+                  onClose={() => {
+                    setPendingOjtImport(null);
+                    setSelectedDuplicateRows([]);
+                  }}
+                />
+              )}
             </Panel>
           )}
 
@@ -1582,6 +1776,108 @@ function AdminEventDialog({ album, onClose }: { album: EventAlbum; onClose: () =
               ))}
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OjtDuplicateDialog({
+  duplicates,
+  selectedRows,
+  setSelectedRows,
+  onOverrideSelected,
+  onRejectSelected,
+  onDeleteExistingSelected,
+  onClose,
+}: {
+  duplicates: OjtDuplicateReview[];
+  selectedRows: number[];
+  setSelectedRows: (rows: number[]) => void;
+  onOverrideSelected: () => void;
+  onRejectSelected: () => void;
+  onDeleteExistingSelected: () => void;
+  onClose: () => void;
+}) {
+  const selectedSet = new Set(selectedRows);
+  const allSelected = duplicates.length > 0 && duplicates.every((duplicate) => selectedSet.has(duplicate.row.rowNumber));
+  const toggleRow = (rowNumber: number) => {
+    setSelectedRows(selectedSet.has(rowNumber)
+      ? selectedRows.filter((selected) => selected !== rowNumber)
+      : [...selectedRows, rowNumber]);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+      <div className="max-h-[88vh] w-full max-w-5xl overflow-hidden rounded-lg bg-white shadow-2xl">
+        <div className="flex flex-col gap-3 border-b border-border p-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-xl font-semibold text-foreground">Existing OJT records found</h3>
+            <p className="mt-1 text-sm text-foreground/55">Select duplicate rows, then override, reject, or delete the existing record.</p>
+          </div>
+          <button type="button" onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
+            Cancel Import
+          </button>
+        </div>
+
+        <div className="max-h-[52vh] overflow-auto">
+          <table className="w-full min-w-[920px] text-left text-sm">
+            <thead className="sticky top-0 border-b border-border bg-white text-xs uppercase tracking-wide text-foreground/45">
+              <tr>
+                <th className="px-5 py-3">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={(event) => setSelectedRows(event.target.checked ? duplicates.map((duplicate) => duplicate.row.rowNumber) : [])}
+                  />
+                </th>
+                <th className="py-3 pr-4">CSV Row</th>
+                <th className="py-3 pr-4">New Entry</th>
+                <th className="py-3 pr-4">Existing Record</th>
+                <th className="py-3 pr-4">School</th>
+                <th className="py-3 pr-4">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {duplicates.map((duplicate) => (
+                <tr key={duplicate.row.rowNumber} className="border-b border-border/60">
+                  <td className="px-5 py-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedSet.has(duplicate.row.rowNumber)}
+                      onChange={() => toggleRow(duplicate.row.rowNumber)}
+                    />
+                  </td>
+                  <td className="py-4 pr-4 text-foreground/60">Row {duplicate.row.rowNumber}</td>
+                  <td className="py-4 pr-4">
+                    <p className="font-semibold text-foreground">{duplicate.row.payload.full_name}</p>
+                    <p className="text-xs text-foreground/50">{duplicate.row.payload.start_date || 'No start date'} to {duplicate.row.payload.end_date || 'No end date'}</p>
+                  </td>
+                  <td className="py-4 pr-4">
+                    <p className="font-semibold text-foreground">{duplicate.existing.fullName}</p>
+                    <p className="text-xs text-foreground/50">{duplicate.existing.startDate || 'No start date'} to {duplicate.existing.endDate || 'No end date'}</p>
+                  </td>
+                  <td className="py-4 pr-4 text-foreground/60">
+                    <p>{duplicate.row.payload.school_name || 'No new school'}</p>
+                    <p className="text-xs text-foreground/45">Existing: {duplicate.existing.schoolName || 'No school'}</p>
+                  </td>
+                  <td className="py-4 pr-4 text-foreground/60">{duplicate.existing.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex flex-col gap-2 border-t border-border p-5 md:flex-row md:items-center md:justify-end">
+          <button type="button" onClick={onDeleteExistingSelected} disabled={selectedRows.length === 0} className="flex h-10 items-center justify-center gap-2 rounded-lg border border-red-200 px-4 text-sm font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-40">
+            <Trash2 className="h-4 w-4" /> Delete Existing Selected
+          </button>
+          <button type="button" onClick={onRejectSelected} disabled={selectedRows.length === 0} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65 disabled:cursor-not-allowed disabled:opacity-40">
+            Reject Selected New Rows
+          </button>
+          <button type="button" onClick={onOverrideSelected} disabled={selectedRows.length === 0} className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
+            Override Selected
+          </button>
         </div>
       </div>
     </div>
