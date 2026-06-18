@@ -17,6 +17,7 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Search,
   School,
   Trash2,
   Upload,
@@ -304,6 +305,9 @@ export function AdminApp() {
   const [selectedTrainee, setSelectedTrainee] = useState<Trainee | null>(null);
   const [editingTrainee, setEditingTrainee] = useState<Trainee | null>(null);
   const [editingTraineePhotoFile, setEditingTraineePhotoFile] = useState<File | null>(null);
+  const [isAddTraineeOpen, setIsAddTraineeOpen] = useState(false);
+  const [ojtSearch, setOjtSearch] = useState('');
+  const [ojtStatusFilter, setOjtStatusFilter] = useState<'all' | OjtStatus>('all');
   const [ojtBatchFile, setOjtBatchFile] = useState<File | null>(null);
   const [ojtBatchPhotoFiles, setOjtBatchPhotoFiles] = useState<File[]>([]);
   const [pendingOjtImport, setPendingOjtImport] = useState<{
@@ -329,6 +333,20 @@ export function AdminApp() {
     () => trainees.filter((trainee) => isSuperAdmin || trainee.clinicId === profile?.clinic_id),
     [isSuperAdmin, profile?.clinic_id, trainees],
   );
+  const filteredTrainees = useMemo(() => {
+    const query = normalizeRecordKey(ojtSearch);
+    return visibleTrainees.filter((trainee) => {
+      const matchesStatus = ojtStatusFilter === 'all' || trainee.status === ojtStatusFilter;
+      const matchesSearch = !query || normalizeRecordKey([
+        trainee.fullName,
+        trainee.schoolName,
+        trainee.course,
+        trainee.batchName,
+        clinics.find((clinic) => clinic.id === trainee.clinicId)?.name ?? '',
+      ].join(' ')).includes(query);
+      return matchesStatus && matchesSearch;
+    });
+  }, [clinics, ojtSearch, ojtStatusFilter, visibleTrainees]);
   const completedTrainees = visibleTrainees.filter((trainee) => trainee.status === 'completed');
 
   useEffect(() => {
@@ -762,6 +780,7 @@ export function AdminApp() {
 
     setNewTrainee({ fullName: '', schoolName: '', course: '', totalHours: '300', startDate: '', endDate: '', batchName: '' });
     setTraineePhotoFile(null);
+    setIsAddTraineeOpen(false);
     await loadAdminData();
   };
 
@@ -772,6 +791,30 @@ export function AdminApp() {
     const link = document.createElement('a');
     link.href = url;
     link.download = 'ojt-batch-template.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportOjtTrainees = () => {
+    const headers = ['full_name', 'clinic', 'school_name', 'course', 'batch_name', 'total_hours', 'start_date', 'end_date', 'status', 'photo_url'];
+    const rows = filteredTrainees.map((trainee) => [
+      trainee.fullName,
+      clinics.find((clinic) => clinic.id === trainee.clinicId)?.name ?? 'Clinic',
+      trainee.schoolName,
+      trainee.course,
+      trainee.batchName,
+      String(trainee.totalHours),
+      trainee.startDate,
+      trainee.endDate,
+      trainee.status,
+      trainee.photoUrl ?? '',
+    ]);
+    const csv = buildCsv(headers, rows);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ojt-trainees-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -1368,29 +1411,38 @@ export function AdminApp() {
 
           {activeTab === 'ojt' && (
             <Panel title="OJT Management" subtitle="Clinic users only see and manage OJT records for their clinic.">
-              <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <Input value={newTrainee.fullName} onChange={(value) => setNewTrainee({ ...newTrainee, fullName: value })} label="Full name" />
-                <Input value={newTrainee.schoolName} onChange={(value) => setNewTrainee({ ...newTrainee, schoolName: value })} label="School" />
-                <Input value={newTrainee.course} onChange={(value) => setNewTrainee({ ...newTrainee, course: value })} label="Course" />
-                <Input value={newTrainee.batchName} onChange={(value) => setNewTrainee({ ...newTrainee, batchName: value })} label="Batch" />
-                <Input value={newTrainee.totalHours} onChange={(value) => setNewTrainee({ ...newTrainee, totalHours: value })} label="Hours" type="number" />
-                <Input value={newTrainee.startDate} onChange={(value) => setNewTrainee({ ...newTrainee, startDate: value })} label="Start date" type="date" />
-                <Input value={newTrainee.endDate} onChange={(value) => setNewTrainee({ ...newTrainee, endDate: value })} label="End date" type="date" />
-                <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-primary/30 bg-primary/5 px-3 py-2">
-                  <ImagePlus className="h-5 w-5 text-primary" strokeWidth={1.5} />
-                  <span className="min-w-0 text-sm font-semibold text-foreground" style={adminClampStyle(1)}>
-                    {traineePhotoFile ? traineePhotoFile.name : 'Upload OJT photo'}
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    onChange={(event) => setTraineePhotoFile(event.target.files?.[0] ?? null)}
-                  />
-                </label>
-                <button type="button" onClick={addTrainee} className="mt-auto flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
-                  <Plus className="h-4 w-4" /> Add OJT
-                </button>
+              <div className="mb-6 flex flex-col gap-3 rounded-lg border border-border bg-white p-4 xl:flex-row xl:items-end xl:justify-between">
+                <div className="grid flex-1 gap-3 md:grid-cols-[1fr_180px]">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Search OJT</span>
+                    <div className="flex h-11 items-center gap-2 rounded-lg border border-border bg-white px-3">
+                      <Search className="h-4 w-4 text-foreground/35" />
+                      <input
+                        value={ojtSearch}
+                        onChange={(event) => setOjtSearch(event.target.value)}
+                        placeholder="Name, school, course, batch"
+                        className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none"
+                      />
+                    </div>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Status</span>
+                    <select value={ojtStatusFilter} onChange={(event) => setOjtStatusFilter(event.target.value as 'all' | OjtStatus)} className="h-11 w-full rounded-lg border border-border bg-white px-3 text-sm">
+                      <option value="all">All status</option>
+                      <option value="active">Active</option>
+                      <option value="completed">Completed</option>
+                      <option value="withdrawn">Withdrawn</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button type="button" onClick={() => setIsAddTraineeOpen(true)} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
+                    <Plus className="h-4 w-4" /> Add
+                  </button>
+                  <button type="button" onClick={exportOjtTrainees} disabled={filteredTrainees.length === 0} className="flex h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/70 disabled:cursor-not-allowed disabled:opacity-40">
+                    <Download className="h-4 w-4" /> Export
+                  </button>
+                </div>
               </div>
               <div className="mb-6 flex flex-col gap-3 rounded-lg border border-border bg-white p-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
@@ -1434,7 +1486,7 @@ export function AdminApp() {
                 </div>
               </div>
               <TraineeTable
-                trainees={visibleTrainees}
+                trainees={filteredTrainees}
                 clinics={clinics}
                 onView={setSelectedTrainee}
                 onEdit={(trainee) => {
@@ -1445,6 +1497,19 @@ export function AdminApp() {
                 onComplete={markCompleted}
                 onCertificate={(trainee) => generateCertificates([trainee])}
               />
+              {isAddTraineeOpen && (
+                <OjtAddDialog
+                  trainee={newTrainee}
+                  setTrainee={setNewTrainee}
+                  photoFile={traineePhotoFile}
+                  setPhotoFile={setTraineePhotoFile}
+                  onSave={addTrainee}
+                  onClose={() => {
+                    setIsAddTraineeOpen(false);
+                    setTraineePhotoFile(null);
+                  }}
+                />
+              )}
               {selectedTrainee && (
                 <OjtDetailsDialog
                   trainee={selectedTrainee}
@@ -1982,6 +2047,86 @@ function OjtDuplicateDialog({
           </button>
           <button type="button" onClick={onOverrideSelected} disabled={selectedRows.length === 0} className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
             Override Selected
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OjtAddDialog({
+  trainee,
+  setTrainee,
+  photoFile,
+  setPhotoFile,
+  onSave,
+  onClose,
+}: {
+  trainee: {
+    fullName: string;
+    schoolName: string;
+    course: string;
+    totalHours: string;
+    startDate: string;
+    endDate: string;
+    batchName: string;
+  };
+  setTrainee: (trainee: {
+    fullName: string;
+    schoolName: string;
+    course: string;
+    totalHours: string;
+    startDate: string;
+    endDate: string;
+    batchName: string;
+  }) => void;
+  photoFile: File | null;
+  setPhotoFile: (file: File | null) => void;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-foreground/70 p-4" role="dialog" aria-modal="true">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-white px-5 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/60">Add OJT</p>
+            <h3 className="text-xl font-normal text-foreground" style={{ fontFamily: 'var(--font-display)' }}>New trainee record</h3>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-foreground/60 hover:text-primary" aria-label="Close add OJT">
+            x
+          </button>
+        </div>
+        <div className="grid gap-4 p-5 md:grid-cols-2">
+          <Input value={trainee.fullName} onChange={(value) => setTrainee({ ...trainee, fullName: value })} label="Full name" />
+          <Input value={trainee.schoolName} onChange={(value) => setTrainee({ ...trainee, schoolName: value })} label="School" />
+          <Input value={trainee.course} onChange={(value) => setTrainee({ ...trainee, course: value })} label="Course" />
+          <Input value={trainee.batchName} onChange={(value) => setTrainee({ ...trainee, batchName: value })} label="Batch" />
+          <Input value={trainee.totalHours} onChange={(value) => setTrainee({ ...trainee, totalHours: value })} label="Hours" type="number" />
+          <Input value={trainee.startDate} onChange={(value) => setTrainee({ ...trainee, startDate: value })} label="Start date" type="date" />
+          <Input value={trainee.endDate} onChange={(value) => setTrainee({ ...trainee, endDate: value })} label="End date" type="date" />
+          <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-primary/30 bg-primary/5 px-3 py-2">
+            <ImagePlus className="h-5 w-5 text-primary" strokeWidth={1.5} />
+            <span className="min-w-0 text-sm font-semibold text-foreground" style={adminClampStyle(1)}>
+              {photoFile ? photoFile.name : 'Upload OJT photo'}
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(event) => {
+                setPhotoFile(event.target.files?.[0] ?? null);
+                event.currentTarget.value = '';
+              }}
+            />
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border p-5">
+          <button type="button" onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
+            Cancel
+          </button>
+          <button type="button" onClick={onSave} className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
+            <Plus className="h-4 w-4" /> Add OJT
           </button>
         </div>
       </div>
