@@ -324,20 +324,20 @@ function StudentInfoDialog({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-3 pt-8 sm:items-center sm:py-4" role="dialog" aria-modal="true" aria-labelledby="student-info-title">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-3 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="student-info-title">
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Close student information" onClick={onClose} />
-      <div className="relative flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-t-lg border border-border bg-white shadow-xl sm:max-h-[86vh] sm:rounded-lg">
-        <div className="flex items-start justify-between gap-4 border-b border-border bg-white p-4 sm:p-6">
+      <div className="relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-border bg-white shadow-xl sm:max-h-[calc(100dvh-2rem)]">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border bg-white p-4 sm:p-6">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/60">Student Information</p>
-            <h2 id="student-info-title" className="mt-2 truncate text-2xl font-semibold text-foreground">{profile.full_name}</h2>
+            <h2 id="student-info-title" className="mt-2 truncate text-xl font-semibold text-foreground sm:text-2xl">{profile.full_name}</h2>
           </div>
           <button type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border text-foreground/60 hover:text-foreground" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="overflow-y-auto p-4 sm:p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="grid gap-3 sm:grid-cols-2">
             <Detail label="Email" value={email || 'Not provided'} />
             <Detail label="Date of birth" value={dateOfBirth || 'Not provided'} />
@@ -358,7 +358,7 @@ function StudentInfoDialog({
               <div className="h-full bg-primary" style={{ width: `${progress}%` }} />
             </div>
           </div>
-        </div> 
+        </div>
       </div>
     </div>
   );
