@@ -192,17 +192,53 @@ function parseCsv(text: string) {
   return rows;
 }
 
-function isValidCsvDate(value: string) {
-  if (!value) {
-    return true;
+function formatCsvDateParts(year: number, month: number, day: number) {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return false;
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeCsvDate(value: string) {
+  let normalized = value.trim();
+  if (!normalized) {
+    return null;
   }
 
-  const date = new Date(`${value}T00:00:00`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  if (normalized.startsWith("'")) {
+    normalized = normalized.slice(1).trim();
+  }
+
+  const formulaText = normalized.match(/^=\s*"?([^"]+)"?$/);
+  if (formulaText) {
+    normalized = formulaText[1].trim();
+  }
+
+  const isoDate = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoDate) {
+    return formatCsvDateParts(Number(isoDate[1]), Number(isoDate[2]), Number(isoDate[3]));
+  }
+
+  const slashDate = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+  if (slashDate) {
+    const year = Number(slashDate[3].length === 2 ? `20${slashDate[3]}` : slashDate[3]);
+    return formatCsvDateParts(year, Number(slashDate[1]), Number(slashDate[2]));
+  }
+
+  const excelSerial = Number(normalized);
+  if (Number.isFinite(excelSerial) && excelSerial >= 1 && excelSerial <= 60000) {
+    const excelEpoch = Date.UTC(1899, 11, 30);
+    const date = new Date(excelEpoch + Math.floor(excelSerial) * 86400000);
+    return date.toISOString().slice(0, 10);
+  }
+
+  return undefined;
 }
 
 function normalizeFileName(value: string) {
@@ -737,6 +773,8 @@ export function AdminApp() {
       const endDate = row[headerIndex.end_date]?.trim() ?? '';
       const photoFileName = row[headerIndex.photo_file]?.trim() ?? '';
       const totalHours = Number(totalHoursValue);
+      const normalizedStartDate = normalizeCsvDate(startDate);
+      const normalizedEndDate = normalizeCsvDate(endDate);
 
       if (!fullName) {
         setNotice(`Row ${rowNumber}: full_name is required.`);
@@ -748,8 +786,8 @@ export function AdminApp() {
         return;
       }
 
-      if (!isValidCsvDate(startDate) || !isValidCsvDate(endDate)) {
-        setNotice(`Row ${rowNumber}: dates must use YYYY-MM-DD format.`);
+      if (normalizedStartDate === undefined || normalizedEndDate === undefined) {
+        setNotice(`Row ${rowNumber}: dates must use YYYY-MM-DD or Excel date format.`);
         return;
       }
 
@@ -766,8 +804,8 @@ export function AdminApp() {
           school_name: row[headerIndex.school_name]?.trim() || null,
           course: row[headerIndex.course]?.trim() || null,
           total_hours: totalHoursValue ? totalHours : 0,
-          start_date: startDate || null,
-          end_date: endDate || null,
+          start_date: normalizedStartDate,
+          end_date: normalizedEndDate,
           status: 'active' as OjtStatus,
           notes: row[headerIndex.batch_name]?.trim() || null,
           created_by: authUser?.id,
