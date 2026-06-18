@@ -150,7 +150,7 @@ type PageVisit = {
 const tabs: Array<{ key: TabKey; label: string; icon: LucideIcon; superOnly?: boolean }> = [
   { key: 'overview', label: 'Overview', icon: Award },
   { key: 'analytics', label: 'Analytics', icon: ChartNoAxesColumn, superOnly: true },
-  { key: 'events', label: 'Events', icon: Camera },
+  { key: 'events', label: 'Events', icon: Camera, superOnly: true },
   { key: 'ojt', label: 'OJT', icon: School },
   { key: 'certificates', label: 'Certificates', icon: Download },
   { key: 'clinics', label: 'Clinics', icon: Building2, superOnly: true },
@@ -588,6 +588,13 @@ export function AdminApp() {
 
     return () => window.clearInterval(timer);
   }, [activeTab, isSuperAdmin, authUser?.id]);
+
+  useEffect(() => {
+    const selectedTab = tabs.find((tab) => tab.key === activeTab);
+    if (selectedTab?.superOnly && !isSuperAdmin) {
+      setActiveTab('overview');
+    }
+  }, [activeTab, isSuperAdmin]);
 
   const login = async () => {
     if (!supabase) {
@@ -1524,7 +1531,7 @@ export function AdminApp() {
             />
           )}
 
-          {activeTab === 'events' && (
+          {activeTab === 'events' && isSuperAdmin && (
             <Panel title="Event Photo Upload" subtitle="Create event albums and upload photos by clinic.">
               <div className="grid gap-4 lg:grid-cols-2">
                 <Input label="Event title" value={eventForm.title} onChange={(value) => setEventForm({ ...eventForm, title: value })} />
