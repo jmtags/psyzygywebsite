@@ -764,6 +764,7 @@ export function AdminApp() {
     const headerIndex = Object.fromEntries(headers.map((header, index) => [header, index]));
     const selectedPhotoFiles = new Map(ojtBatchPhotoFiles.map((file) => [normalizeFileName(file.name), file]));
     const rowsToImport = [];
+    const missingPhotoFiles = new Set<string>();
 
     for (const [rowIndex, row] of parsedRows.slice(1).entries()) {
       const rowNumber = rowIndex + 2;
@@ -792,8 +793,7 @@ export function AdminApp() {
       }
 
       if (photoFileName && !selectedPhotoFiles.has(normalizeFileName(photoFileName))) {
-        setNotice(`Row ${rowNumber}: photo_file "${photoFileName}" was not selected.`);
-        return;
+        missingPhotoFiles.add(photoFileName);
       }
 
       rowsToImport.push({
@@ -863,7 +863,8 @@ export function AdminApp() {
 
     setOjtBatchFile(null);
     setOjtBatchPhotoFiles([]);
-    setNotice(`${rowsToImport.length} OJT trainee(s) imported${uploadedPhotoCount ? ` with ${uploadedPhotoCount} photo(s)` : ''}.`);
+    const skippedPhotoCount = missingPhotoFiles.size;
+    setNotice(`${rowsToImport.length} OJT trainee(s) imported${uploadedPhotoCount ? ` with ${uploadedPhotoCount} photo(s)` : ''}${skippedPhotoCount ? `; ${skippedPhotoCount} photo filename(s) were not selected and were skipped` : ''}.`);
     await loadAdminData();
   };
 
