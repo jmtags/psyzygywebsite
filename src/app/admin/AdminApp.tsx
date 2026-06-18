@@ -57,6 +57,23 @@ type Trainee = {
   endDate: string;
   status: OjtStatus;
   batchName: string;
+  photoUrl: string | null;
+  photoStoragePath: string | null;
+};
+
+type TraineeRow = {
+  id: string;
+  clinic_id: string;
+  full_name: string;
+  school_name: string | null;
+  course: string | null;
+  total_hours: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  status: OjtStatus;
+  notes: string | null;
+  photo_public_url: string | null;
+  photo_storage_path: string | null;
 };
 
 type EventPhoto = {
@@ -101,6 +118,23 @@ const tabs: Array<{ key: TabKey; label: string; icon: LucideIcon; superOnly?: bo
 const emptyClinic = { id: '', name: '', slug: '', address: '', phone: '', email: '' };
 const emptyProfile: Profile = { id: '', full_name: '', role: 'clinic_admin', clinic_id: '', is_active: true };
 
+function mapTraineeRow(row: TraineeRow): Trainee {
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    schoolName: row.school_name ?? '',
+    course: row.course ?? '',
+    clinicId: row.clinic_id,
+    totalHours: row.total_hours ?? 0,
+    startDate: row.start_date ?? '',
+    endDate: row.end_date ?? '',
+    status: row.status,
+    batchName: row.notes ?? '',
+    photoUrl: row.photo_public_url,
+    photoStoragePath: row.photo_storage_path,
+  };
+}
+
 export function AdminApp() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -129,6 +163,7 @@ export function AdminApp() {
   const [eventFiles, setEventFiles] = useState<File[]>([]);
 
   const [trainees, setTrainees] = useState<Trainee[]>([]);
+  const [traineePhotoFile, setTraineePhotoFile] = useState<File | null>(null);
   const [newTrainee, setNewTrainee] = useState({
     fullName: '',
     schoolName: '',
@@ -224,6 +259,17 @@ export function AdminApp() {
     }
 
     setEventAlbums((albumRows ?? []) as EventAlbum[]);
+
+    const { data: traineeRows, error: traineesError } = await supabase
+      .from('ojt_trainees')
+      .select('id, clinic_id, full_name, school_name, course, total_hours, start_date, end_date, status, notes, photo_public_url, photo_storage_path')
+      .order('created_at', { ascending: false });
+
+    if (traineesError) {
+      setNotice(traineesError.message);
+    }
+
+    setTrainees(((traineeRows ?? []) as TraineeRow[]).map(mapTraineeRow));
 
     if (normalizedProfile.role === 'super_admin') {
       const { data: profileRows, error: profilesError } = await supabase
@@ -515,30 +561,77 @@ export function AdminApp() {
     await loadAdminData();
   };
 
-  const addTrainee = () => {
-    if (!newTrainee.fullName.trim() || !activeClinicId) {
+  const addTrainee = async () => {
+    if (!supabase || !newTrainee.fullName.trim() || !activeClinicId) {
       return;
     }
 
-    setTrainees((current) => [
-      {
-        id: `ojt-${Date.now()}`,
-        fullName: newTrainee.fullName.trim(),
-        schoolName: newTrainee.schoolName.trim(),
-        course: newTrainee.course.trim(),
-        clinicId: activeClinicId,
-        totalHours: Number(newTrainee.totalHours) || 0,
-        startDate: newTrainee.startDate,
-        endDate: newTrainee.endDate,
+    setNotice('');
+    const { data: traineeRow, error: traineeError } = await supabase
+      .from('ojt_trainees')
+      .insert({
+        clinic_id: activeClinicId,
+        full_name: newTrainee.fullName.trim(),
+        school_name: newTrainee.schoolName.trim() || null,
+        course: newTrainee.course.trim() || null,
+        total_hours: Number(newTrainee.totalHours) || 0,
+        start_date: newTrainee.startDate || null,
+        end_date: newTrainee.endDate || null,
         status: 'active',
-        batchName: newTrainee.batchName.trim(),
-      },
-      ...current,
-    ]);
+        notes: newTrainee.batchName.trim() || null,
+        created_by: authUser?.id,
+      })
+      .select('id, clinic_id, full_name, school_name, course, total_hours, start_date, end_date, status, notes, photo_public_url, photo_storage_path')
+      .single();
+
+    if (traineeError || !traineeRow) {
+      setNotice(traineeError?.message ?? 'Unable to save OJT trainee.');
+      return;
+    }
+
+    if (traineePhotoFile) {
+      const safeName = traineePhotoFile.name.replace(/[^a-zA-Z0-9.-]/g, '-');
+      const storagePath = `${activeClinicId}/${traineeRow.id}/${Date.now()}-${safeName}`;
+      const { error: uploadError } = await supabase.storage.from('ojt-photos').upload(storagePath, traineePhotoFile);
+
+      if (uploadError) {
+        setNotice(uploadError.message);
+      } else {
+        const { data: publicUrlData } = supabase.storage.from('ojt-photos').getPublicUrl(storagePath);
+        const { error: photoUpdateError } = await supabase
+          .from('ojt_trainees')
+          .update({
+            photo_storage_path: storagePath,
+            photo_public_url: publicUrlData.publicUrl,
+          })
+          .eq('id', traineeRow.id);
+
+        if (photoUpdateError) {
+          setNotice(photoUpdateError.message);
+        }
+      }
+    }
+
     setNewTrainee({ fullName: '', schoolName: '', course: '', totalHours: '300', startDate: '', endDate: '', batchName: '' });
+    setTraineePhotoFile(null);
+    await loadAdminData();
   };
 
-  const markCompleted = (id: string) => {
+  const markCompleted = async (id: string) => {
+    if (!supabase) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('ojt_trainees')
+      .update({ status: 'completed' })
+      .eq('id', id);
+
+    if (error) {
+      setNotice(error.message);
+      return;
+    }
+
     setTrainees((current) => current.map((trainee) => (
       trainee.id === id ? { ...trainee, status: 'completed' } : trainee
     )));
@@ -781,6 +874,18 @@ export function AdminApp() {
                 <Input value={newTrainee.totalHours} onChange={(value) => setNewTrainee({ ...newTrainee, totalHours: value })} label="Hours" type="number" />
                 <Input value={newTrainee.startDate} onChange={(value) => setNewTrainee({ ...newTrainee, startDate: value })} label="Start date" type="date" />
                 <Input value={newTrainee.endDate} onChange={(value) => setNewTrainee({ ...newTrainee, endDate: value })} label="End date" type="date" />
+                <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-primary/30 bg-primary/5 px-3 py-2">
+                  <ImagePlus className="h-5 w-5 text-primary" strokeWidth={1.5} />
+                  <span className="min-w-0 text-sm font-semibold text-foreground" style={adminClampStyle(1)}>
+                    {traineePhotoFile ? traineePhotoFile.name : 'Upload OJT photo'}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={(event) => setTraineePhotoFile(event.target.files?.[0] ?? null)}
+                  />
+                </label>
                 <button type="button" onClick={addTrainee} className="mt-auto flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
                   <Plus className="h-4 w-4" /> Add OJT
                 </button>
@@ -1263,14 +1368,15 @@ function TraineeTable({
 }: {
   trainees: Trainee[];
   clinics: Clinic[];
-  onComplete: (id: string) => void;
+  onComplete: (id: string) => void | Promise<void>;
   onCertificate: (trainee: Trainee) => void;
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] text-left text-sm">
+      <table className="w-full min-w-[840px] text-left text-sm">
         <thead className="border-b border-border text-xs uppercase tracking-wide text-foreground/45">
           <tr>
+            <th className="py-3 pr-4">Photo</th>
             <th className="py-3 pr-4">Name</th>
             <th className="py-3 pr-4">Clinic</th>
             <th className="py-3 pr-4">School</th>
@@ -1282,6 +1388,17 @@ function TraineeTable({
         <tbody>
           {trainees.map((trainee) => (
             <tr key={trainee.id} className="border-b border-border/60">
+              <td className="py-4 pr-4">
+                <div className="h-12 w-12 overflow-hidden rounded-lg bg-secondary">
+                  {trainee.photoUrl ? (
+                    <img src={trainee.photoUrl} alt={trainee.fullName} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-foreground/35">
+                      <Camera className="h-5 w-5" strokeWidth={1.5} />
+                    </div>
+                  )}
+                </div>
+              </td>
               <td className="py-4 pr-4 font-medium text-foreground">{trainee.fullName}</td>
               <td className="py-4 pr-4 text-foreground/60">{clinics.find((clinic) => clinic.id === trainee.clinicId)?.name ?? 'Clinic'}</td>
               <td className="py-4 pr-4 text-foreground/60">{trainee.schoolName}</td>
