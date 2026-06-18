@@ -2699,73 +2699,172 @@ function TraineeTable({
   onCertificate: (trainee: Trainee) => void;
 }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[1260px] text-left text-sm">
-        <thead className="border-b border-border text-xs uppercase tracking-wide text-foreground/45">
+    <div className="space-y-4">
+      <div className="grid gap-3 xl:hidden">
+        {trainees.map((trainee) => {
+          const clinicName = clinics.find((clinic) => clinic.id === trainee.clinicId)?.name ?? 'Clinic';
+          const renderedHours = loggedHoursByTrainee.get(trainee.id) ?? 0;
+
+          return (
+            <div key={trainee.id} className="rounded-lg border border-border bg-white p-4">
+              <div className="flex items-start gap-3">
+                <TraineePhoto trainee={trainee} size="large" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">{trainee.fullName}</h3>
+                    <StatusPill status={trainee.status} />
+                  </div>
+                  <p className="mt-1 text-sm text-foreground/55">{clinicName}</p>
+                  <p className="mt-1 truncate text-sm text-foreground/55">{trainee.schoolName || 'School not provided'}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <MobileFact label="Rendered" value={`${renderedHours.toFixed(2)} hrs`} />
+                <MobileFact label="Required" value={`${trainee.totalHours} hrs`} />
+                <MobileFact label="Email" value={trainee.email || '-'} />
+                <MobileFact label="Birth date" value={trainee.dateOfBirth || '-'} />
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <ActionButton label="View" icon={Eye} onClick={() => onView(trainee)} />
+                <ActionButton label="Edit" icon={Pencil} onClick={() => onEdit(trainee)} />
+                {trainee.status !== 'completed' && (
+                  <ActionButton label="Complete" icon={CheckCircle2} onClick={() => onComplete(trainee.id)} />
+                )}
+                <ActionButton label="PDF" icon={Download} onClick={() => onCertificate(trainee)} variant="primary" />
+                <ActionButton label={deletingId === trainee.id ? 'Deleting...' : 'Delete'} icon={Trash2} onClick={() => onDelete(trainee)} variant="danger" disabled={deletingId === trainee.id} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-lg border border-border xl:block">
+        <table className="w-full table-fixed text-left text-sm">
+          <thead className="border-b border-border bg-[#f7f4f0] text-xs uppercase tracking-wide text-foreground/45">
           <tr>
-            <th className="py-3 pr-4">Photo</th>
-            <th className="py-3 pr-4">Name</th>
-            <th className="py-3 pr-4">Clinic</th>
-            <th className="py-3 pr-4">School</th>
-            <th className="py-3 pr-4">Email</th>
-            <th className="py-3 pr-4">Birth date</th>
-            <th className="py-3 pr-4">Hours</th>
-            <th className="py-3 pr-4">Rendered</th>
-            <th className="py-3 pr-4">Status</th>
-            <th className="py-3 pr-4">Actions</th>
+            <th className="w-[34%] px-4 py-3">Trainee</th>
+            <th className="w-[20%] px-4 py-3">School</th>
+            <th className="w-[18%] px-4 py-3">Contact</th>
+            <th className="w-[13%] px-4 py-3">Hours</th>
+            <th className="w-[15%] px-4 py-3 text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {trainees.map((trainee) => (
-            <tr key={trainee.id} className="border-b border-border/60">
-              <td className="py-4 pr-4">
-                <div className="h-12 w-12 overflow-hidden rounded-lg bg-secondary">
-                  {trainee.photoUrl ? (
-                    <img src={trainee.photoUrl} alt={trainee.fullName} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-foreground/35">
-                      <Camera className="h-5 w-5" strokeWidth={1.5} />
+          {trainees.map((trainee) => {
+            const clinicName = clinics.find((clinic) => clinic.id === trainee.clinicId)?.name ?? 'Clinic';
+            const renderedHours = loggedHoursByTrainee.get(trainee.id) ?? 0;
+            const progress = trainee.totalHours ? Math.min(100, Math.round((renderedHours / trainee.totalHours) * 100)) : 0;
+
+            return (
+            <tr key={trainee.id} className="border-b border-border/60 align-top last:border-b-0">
+              <td className="px-4 py-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  <TraineePhoto trainee={trainee} />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate font-semibold text-foreground">{trainee.fullName}</p>
+                      <StatusPill status={trainee.status} />
                     </div>
-                  )}
+                    <p className="mt-1 truncate text-xs text-foreground/50">{clinicName}</p>
+                    <p className="mt-1 text-xs text-foreground/45">DOB: {trainee.dateOfBirth || '-'}</p>
+                  </div>
                 </div>
               </td>
-              <td className="py-4 pr-4 font-medium text-foreground">{trainee.fullName}</td>
-              <td className="py-4 pr-4 text-foreground/60">{clinics.find((clinic) => clinic.id === trainee.clinicId)?.name ?? 'Clinic'}</td>
-              <td className="py-4 pr-4 text-foreground/60">{trainee.schoolName}</td>
-              <td className="py-4 pr-4 text-foreground/60">{trainee.email || '-'}</td>
-              <td className="py-4 pr-4 text-foreground/60">{trainee.dateOfBirth || '-'}</td>
-              <td className="py-4 pr-4 text-foreground/60">{trainee.totalHours}</td>
-              <td className="py-4 pr-4 text-foreground/60">{(loggedHoursByTrainee.get(trainee.id) ?? 0).toFixed(2)}</td>
-              <td className="py-4 pr-4">
-                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${trainee.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                  {trainee.status}
-                </span>
+              <td className="px-4 py-4">
+                <p className="truncate font-medium text-foreground/70">{trainee.schoolName || '-'}</p>
+                <p className="mt-1 truncate text-xs text-foreground/45">{trainee.course || 'Course not provided'}</p>
               </td>
-              <td className="py-4 pr-4">
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => onView(trainee)} className="flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold text-foreground/65">
-                    <Eye className="h-3.5 w-3.5" /> View
-                  </button>
-                  <button type="button" onClick={() => onEdit(trainee)} className="flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold text-foreground/65">
-                    <Pencil className="h-3.5 w-3.5" /> Edit
-                  </button>
-                  {trainee.status !== 'completed' && (
-                    <button type="button" onClick={() => onComplete(trainee.id)} className="flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold text-foreground/65">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Complete
-                    </button>
-                  )}
-                  <button type="button" onClick={() => onCertificate(trainee)} className="flex h-9 items-center gap-1 rounded-lg bg-primary px-3 text-xs font-semibold text-white">
-                    <Download className="h-3.5 w-3.5" /> PDF
-                  </button>
-                  <button type="button" onClick={() => onDelete(trainee)} disabled={deletingId === trainee.id} className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-40">
-                    <Trash2 className="h-3.5 w-3.5" /> {deletingId === trainee.id ? 'Deleting...' : 'Delete'}
-                  </button>
+              <td className="px-4 py-4">
+                <p className="truncate text-foreground/60">{trainee.email || '-'}</p>
+                <p className="mt-1 truncate text-xs text-foreground/45">Batch: {trainee.batchName || '-'}</p>
+              </td>
+              <td className="px-4 py-4">
+                <p className="font-semibold text-primary">{renderedHours.toFixed(2)} / {trainee.totalHours}</p>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary">
+                  <div className="h-full bg-primary" style={{ width: `${progress}%` }} />
+                </div>
+                <p className="mt-1 text-xs text-foreground/45">{progress}% complete</p>
+              </td>
+              <td className="px-4 py-4">
+                <div className="flex flex-wrap justify-end gap-2">
+                  <IconAction label="View" icon={Eye} onClick={() => onView(trainee)} />
+                  <IconAction label="Edit" icon={Pencil} onClick={() => onEdit(trainee)} />
+                  {trainee.status !== 'completed' && <IconAction label="Complete" icon={CheckCircle2} onClick={() => onComplete(trainee.id)} />}
+                  <IconAction label="PDF" icon={Download} onClick={() => onCertificate(trainee)} variant="primary" />
+                  <IconAction label={deletingId === trainee.id ? 'Deleting' : 'Delete'} icon={Trash2} onClick={() => onDelete(trainee)} variant="danger" disabled={deletingId === trainee.id} />
                 </div>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
+      </div>
     </div>
+  );
+}
+
+function TraineePhoto({ trainee, size = 'normal' }: { trainee: Trainee; size?: 'normal' | 'large' }) {
+  const className = size === 'large' ? 'h-14 w-14' : 'h-12 w-12';
+
+  return (
+    <div className={`${className} shrink-0 overflow-hidden rounded-lg bg-secondary`}>
+      {trainee.photoUrl ? (
+        <img src={trainee.photoUrl} alt={trainee.fullName} className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-foreground/35">
+          <Camera className="h-5 w-5" strokeWidth={1.5} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusPill({ status }: { status: OjtStatus }) {
+  const styles = {
+    active: 'bg-amber-50 text-amber-700',
+    completed: 'bg-emerald-50 text-emerald-700',
+    withdrawn: 'bg-red-50 text-red-700',
+  };
+
+  return <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${styles[status]}`}>{status}</span>;
+}
+
+function MobileFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg bg-[#f7f4f0] px-3 py-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground/45">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-foreground/70">{value}</p>
+    </div>
+  );
+}
+
+function ActionButton({ label, icon: Icon, onClick, variant = 'plain', disabled = false }: { label: string; icon: LucideIcon; onClick: () => void; variant?: 'plain' | 'primary' | 'danger'; disabled?: boolean }) {
+  const styles = {
+    plain: 'border-border bg-white text-foreground/65',
+    primary: 'border-primary bg-primary text-white',
+    danger: 'border-red-200 bg-white text-red-600',
+  };
+
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} className={`flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${styles[variant]}`}>
+      <Icon className="h-3.5 w-3.5" /> {label}
+    </button>
+  );
+}
+
+function IconAction({ label, icon: Icon, onClick, variant = 'plain', disabled = false }: { label: string; icon: LucideIcon; onClick: () => void; variant?: 'plain' | 'primary' | 'danger'; disabled?: boolean }) {
+  const styles = {
+    plain: 'border-border bg-white text-foreground/65',
+    primary: 'border-primary bg-primary text-white',
+    danger: 'border-red-200 bg-white text-red-600',
+  };
+
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} className={`flex h-9 w-9 items-center justify-center rounded-lg border disabled:cursor-not-allowed disabled:opacity-40 ${styles[variant]}`} title={label} aria-label={label}>
+      <Icon className="h-3.5 w-3.5" />
+    </button>
   );
 }
