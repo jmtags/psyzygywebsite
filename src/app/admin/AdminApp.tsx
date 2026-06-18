@@ -337,6 +337,8 @@ export function AdminApp() {
   const [profileForm, setProfileForm] = useState<Profile>(emptyProfile);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [deletingProfileId, setDeletingProfileId] = useState<string | null>(null);
   const [editingClinicId, setEditingClinicId] = useState<string | null>(null);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -658,10 +660,11 @@ export function AdminApp() {
   };
 
   const saveProfile = async () => {
-    if (!supabase || !isSuperAdmin) {
+    if (!supabase || !isSuperAdmin || isSavingProfile) {
       return;
     }
 
+    clearNotice();
     const nextEmail = newUserEmail.trim().toLowerCase();
     const nextPassword = newUserPassword;
     const payload = {
@@ -681,6 +684,12 @@ export function AdminApp() {
       return;
     }
 
+    if (editingProfileId && nextPassword && nextPassword.length < 6) {
+      notify('New password must be at least 6 characters.', 'warning');
+      return;
+    }
+
+    let successMessage = '';
     if (!editingProfileId) {
       if (!nextEmail || !isValidEmail(nextEmail)) {
         notify('Enter a valid login email.', 'warning');
@@ -692,48 +701,53 @@ export function AdminApp() {
         return;
       }
 
-      const response = await supabase.functions.invoke('admin-create-user', {
-        body: {
-          email: nextEmail,
-          password: nextPassword,
-          ...payload,
-        },
-      });
-
-      if (response.error) {
-        notify(await getFunctionErrorMessage(response.error), 'error');
-        return;
-      }
-
-      notify('User login account created. They can now sign in with the email and temporary password.', 'success');
-    } else {
-      const profileResponse = await supabase.from('user_profiles').update(payload).eq('id', editingProfileId);
-      if (profileResponse.error) {
-        notify(profileResponse.error.message, 'error');
-        return;
-      }
-
-      if (nextPassword) {
-        if (nextPassword.length < 6) {
-          notify('New password must be at least 6 characters.', 'warning');
-          return;
-        }
-
-        const passwordResponse = await supabase.functions.invoke('admin-create-user', {
+      setIsSavingProfile(true);
+      try {
+        const response = await supabase.functions.invoke('admin-create-user', {
           body: {
-            action: 'update-password',
-            user_id: editingProfileId,
+            email: nextEmail,
             password: nextPassword,
+            ...payload,
           },
         });
 
-        if (passwordResponse.error) {
-          notify(await getFunctionErrorMessage(passwordResponse.error), 'error');
+        if (response.error) {
+          notify(await getFunctionErrorMessage(response.error), 'error');
           return;
         }
-      }
 
-      notify(nextPassword ? 'User profile and password updated.' : 'User profile updated.', 'success');
+        successMessage = 'User login account created. They can now sign in with the email and temporary password.';
+      } finally {
+        setIsSavingProfile(false);
+      }
+    } else {
+      setIsSavingProfile(true);
+      try {
+        const profileResponse = await supabase.from('user_profiles').update(payload).eq('id', editingProfileId);
+        if (profileResponse.error) {
+          notify(profileResponse.error.message, 'error');
+          return;
+        }
+
+        if (nextPassword) {
+          const passwordResponse = await supabase.functions.invoke('admin-create-user', {
+            body: {
+              action: 'update-password',
+              user_id: editingProfileId,
+              password: nextPassword,
+            },
+          });
+
+          if (passwordResponse.error) {
+            notify(await getFunctionErrorMessage(passwordResponse.error), 'error');
+            return;
+          }
+        }
+
+        successMessage = nextPassword ? 'User profile and password updated.' : 'User profile updated.';
+      } finally {
+        setIsSavingProfile(false);
+      }
     }
 
     setProfileForm(emptyProfile);
@@ -741,6 +755,7 @@ export function AdminApp() {
     setNewUserPassword('');
     setEditingProfileId(null);
     await loadAdminData();
+    notify(successMessage, 'success');
   };
 
   const saveEventAlbum = async () => {
@@ -854,17 +869,32 @@ export function AdminApp() {
   };
 
   const deleteProfile = async (profileId: string) => {
-    if (!supabase || !isSuperAdmin || !window.confirm('Delete this user profile? This does not delete the Supabase Auth user.')) {
+    if (!supabase || !isSuperAdmin || deletingProfileId || !window.confirm('Delete this user profile? This does not delete the Supabase Auth user.')) {
       return;
     }
 
-    const { error } = await supabase.from('user_profiles').delete().eq('id', profileId);
-    if (error) {
-      setNotice(error.message);
-      return;
-    }
+    clearNotice();
+    setDeletingProfileId(profileId);
+    try {
+      const userProfile = profiles.find((item) => item.id === profileId);
+      const { error } = await supabase.from('user_profiles').delete().eq('id', profileId);
+      if (error) {
+        notify(error.message, 'error');
+        return;
+      }
 
-    await loadAdminData();
+      if (editingProfileId === profileId) {
+        setEditingProfileId(null);
+        setProfileForm(emptyProfile);
+        setNewUserEmail('');
+        setNewUserPassword('');
+      }
+
+      await loadAdminData();
+      notify(`${userProfile?.full_name ?? 'User profile'} was deleted.`, 'success');
+    } finally {
+      setDeletingProfileId(null);
+    }
   };
 
   const addTrainee = async () => {
@@ -1810,6 +1840,8 @@ export function AdminApp() {
               setPassword={setNewUserPassword}
               onSave={saveProfile}
               onDelete={deleteProfile}
+              isSaving={isSavingProfile}
+              deletingId={deletingProfileId}
             />
           )}
         </section>
@@ -1960,14 +1992,16 @@ function Panel({ title, subtitle, children }: { title: string; subtitle: string;
 
 function AdminNotice({ message, type }: { message: string; type: AdminNoticeType }) {
   const styles = {
-    success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-    warning: 'border-amber-200 bg-amber-50 text-amber-900',
-    error: 'border-red-200 bg-red-50 text-red-700',
+    success: 'border-emerald-200 bg-emerald-50 text-emerald-800 shadow-emerald-950/10',
+    warning: 'border-amber-200 bg-amber-50 text-amber-900 shadow-amber-950/10',
+    error: 'border-red-200 bg-red-50 text-red-700 shadow-red-950/10',
   };
 
   return (
-    <div className={`rounded-lg border p-4 text-sm font-medium ${styles[type]}`} role="status">
-      {message}
+    <div className="fixed left-3 right-3 top-3 z-[140] sm:left-auto sm:w-full sm:max-w-md" role="status" aria-live="polite">
+      <div className={`rounded-lg border p-4 text-sm font-medium shadow-xl ${styles[type]}`}>
+        {message}
+      </div>
     </div>
   );
 }
@@ -2066,6 +2100,8 @@ function UserCrud({
   setPassword,
   onSave,
   onDelete,
+  isSaving,
+  deletingId,
 }: {
   profiles: Profile[];
   clinics: Clinic[];
@@ -2079,6 +2115,8 @@ function UserCrud({
   setPassword: (value: string) => void;
   onSave: () => void;
   onDelete: (id: string) => void;
+  isSaving: boolean;
+  deletingId: string | null;
 }) {
   return (
     <Panel title="User CRUD" subtitle="Create a login account with password, then assign the user to a role and clinic.">
@@ -2116,11 +2154,11 @@ function UserCrud({
           <span className="text-sm font-medium text-foreground/65">Active</span>
         </label>
         <div className="flex items-end gap-2 xl:col-span-3">
-          <button type="button" onClick={onSave} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
-            <Save className="h-4 w-4" /> {editingId ? 'Save User Profile' : 'Create User'}
+          <button type="button" onClick={onSave} disabled={isSaving} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+            <Save className="h-4 w-4" /> {isSaving ? (editingId ? 'Saving...' : 'Creating...') : (editingId ? 'Save User Profile' : 'Create User')}
           </button>
           {editingId && (
-            <button type="button" onClick={() => { setEditingId(null); setForm(emptyProfile); setEmail(''); setPassword(''); }} className="h-11 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
+            <button type="button" onClick={() => { setEditingId(null); setForm(emptyProfile); setEmail(''); setPassword(''); }} disabled={isSaving} className="h-11 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65 disabled:cursor-not-allowed disabled:opacity-50">
               Cancel
             </button>
           )}
@@ -2149,11 +2187,11 @@ function UserCrud({
                 <td className="py-4 pr-4 text-xs text-foreground/45">{userProfile.id}</td>
                 <td className="py-4 pr-4">
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => { setEditingId(userProfile.id); setForm(userProfile); setEmail(''); setPassword(''); }} className="flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold">
+                    <button type="button" onClick={() => { setEditingId(userProfile.id); setForm(userProfile); setEmail(''); setPassword(''); }} disabled={isSaving || deletingId === userProfile.id} className="flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40">
                       <Pencil className="h-3.5 w-3.5" /> Edit
                     </button>
-                    <button type="button" onClick={() => onDelete(userProfile.id)} className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600">
-                      <Trash2 className="h-3.5 w-3.5" /> Delete
+                    <button type="button" onClick={() => onDelete(userProfile.id)} disabled={isSaving || Boolean(deletingId)} className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-40">
+                      <Trash2 className="h-3.5 w-3.5" /> {deletingId === userProfile.id ? 'Deleting...' : 'Delete'}
                     </button>
                   </div>
                 </td>
