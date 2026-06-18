@@ -324,10 +324,10 @@ function StudentInfoDialog({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-3 py-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="student-info-title">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-3 pt-8 sm:items-center sm:py-4" role="dialog" aria-modal="true" aria-labelledby="student-info-title">
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Close student information" onClick={onClose} />
-      <div className="relative w-full max-w-lg rounded-lg border border-border bg-white p-5 shadow-xl sm:p-6">
-        <div className="flex items-start justify-between gap-4">
+      <div className="relative flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-t-lg border border-border bg-white shadow-xl sm:max-h-[86vh] sm:rounded-lg">
+        <div className="flex items-start justify-between gap-4 border-b border-border bg-white p-4 sm:p-6">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/60">Student Information</p>
             <h2 id="student-info-title" className="mt-2 truncate text-2xl font-semibold text-foreground">{profile.full_name}</h2>
@@ -337,26 +337,28 @@ function StudentInfoDialog({
           </button>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <Detail label="Email" value={email || 'Not provided'} />
-          <Detail label="Date of birth" value={dateOfBirth || 'Not provided'} />
-          <Detail label="School" value={profile.school_name || 'Not provided'} />
-          <Detail label="Course" value={profile.course || 'Not provided'} />
-          <Detail label="Clinic" value={profile.clinic_name} />
-          <Detail label="Status" value={profile.status} />
-          <Detail label="Required hours" value={String(profile.required_hours)} />
-          <Detail label="Rendered hours" value={Number(profile.rendered_hours).toFixed(2)} />
-        </div>
+        <div className="overflow-y-auto p-4 sm:p-6">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Detail label="Email" value={email || 'Not provided'} />
+            <Detail label="Date of birth" value={dateOfBirth || 'Not provided'} />
+            <Detail label="School" value={profile.school_name || 'Not provided'} />
+            <Detail label="Course" value={profile.course || 'Not provided'} />
+            <Detail label="Clinic" value={profile.clinic_name} />
+            <Detail label="Status" value={profile.status} />
+            <Detail label="Required hours" value={String(profile.required_hours)} />
+            <Detail label="Rendered hours" value={Number(profile.rendered_hours).toFixed(2)} />
+          </div>
 
-        <div className="mt-5 rounded-lg bg-[#f7f4f0] p-4">
-          <div className="flex items-center justify-between gap-3 text-sm font-semibold">
-            <span className="text-foreground/60">Completion Progress</span>
-            <span className="text-primary">{progress}%</span>
+          <div className="mt-4 rounded-lg bg-[#f7f4f0] p-4">
+            <div className="flex items-center justify-between gap-3 text-sm font-semibold">
+              <span className="text-foreground/60">Completion Progress</span>
+              <span className="text-primary">{progress}%</span>
+            </div>
+            <div className="mt-3 h-3 overflow-hidden rounded-full bg-white">
+              <div className="h-full bg-primary" style={{ width: `${progress}%` }} />
+            </div>
           </div>
-          <div className="mt-3 h-3 overflow-hidden rounded-full bg-white">
-            <div className="h-full bg-primary" style={{ width: `${progress}%` }} />
-          </div>
-        </div>
+        </div> 
       </div>
     </div>
   );
