@@ -197,17 +197,6 @@ export function OjtPortal() {
                 <button type="button" onClick={logout} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-red-700">
                   <LogOut className="h-4 w-4" /> Logout
                 </button>
-                {openLog && (
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Daily notes</span>
-                    <textarea
-                      value={dailyNotes}
-                      onChange={(event) => setDailyNotes(event.target.value)}
-                      placeholder="Assisted intake forms, observed session, encoded files..."
-                      className="min-h-24 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
-                    />
-                  </label>
-                )}
               </div>
             </div>
 
@@ -250,6 +239,17 @@ export function OjtPortal() {
                 >
                   <LogOut className="h-4 w-4" /> {isSaving ? 'Saving...' : 'Time Out'}
                 </button>
+                {openLog && (
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Daily notes</span>
+                    <textarea
+                      value={dailyNotes}
+                      onChange={(event) => setDailyNotes(event.target.value)}
+                      placeholder="Assisted intake forms, observed session, encoded files..."
+                      className="min-h-24 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+                    />
+                  </label>
+                )}
               </div>
             </div>
 
@@ -264,7 +264,7 @@ export function OjtPortal() {
                     </div>
                     <p className="mt-3 text-sm text-foreground/60">Time in: {formatDateTime(log.time_in)}</p>
                     <p className="mt-1 text-sm text-foreground/60">Time out: {log.time_out ? formatDateTime(log.time_out) : 'Open'}</p>
-                    <p className="mt-1 text-sm text-foreground/60">Status: <span className="font-semibold capitalize">{log.approval_status}</span></p>
+                    <p className="mt-1 text-sm text-foreground/60">Status: <span className="font-semibold capitalize">{log.approval_status ?? 'pending'}</span></p>
                     {log.notes && <p className="mt-2 text-sm text-foreground/60">{log.notes}</p>}
                   </div>
                 ))}
@@ -290,7 +290,7 @@ export function OjtPortal() {
                         <td className="py-3 pr-4 text-foreground/60">{formatDateTime(log.time_in)}</td>
                         <td className="py-3 pr-4 text-foreground/60">{log.time_out ? formatDateTime(log.time_out) : 'Open'}</td>
                         <td className="py-3 pr-4 text-foreground/60">{Number(log.rendered_hours).toFixed(2)}</td>
-                        <td className="py-3 pr-4 text-foreground/60 capitalize">{log.approval_status}</td>
+                        <td className="py-3 pr-4 text-foreground/60 capitalize">{log.approval_status ?? 'pending'}</td>
                       </tr>
                     ))}
                     {logs.length === 0 && (

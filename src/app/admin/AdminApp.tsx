@@ -417,6 +417,17 @@ export function AdminApp() {
     });
     return totals;
   }, [ojtTimeLogs]);
+  const visibleTraineeIds = useMemo(() => new Set(visibleTrainees.map((trainee) => trainee.id)), [visibleTrainees]);
+  const reviewableTimeLogs = useMemo(
+    () => ojtTimeLogs
+      .filter((log) => Boolean(log.time_out) && visibleTraineeIds.has(log.trainee_id))
+      .sort((first, second) => {
+        if (first.approval_status === 'pending' && second.approval_status !== 'pending') return -1;
+        if (first.approval_status !== 'pending' && second.approval_status === 'pending') return 1;
+        return new Date(second.time_in).getTime() - new Date(first.time_in).getTime();
+      }),
+    [ojtTimeLogs, visibleTraineeIds],
+  );
   const completedTrainees = visibleTrainees.filter((trainee) => trainee.status === 'completed');
 
   const notify = (message: string, type: AdminNoticeType = 'warning') => {
@@ -1800,6 +1811,14 @@ export function AdminApp() {
                   </button>
                 </div>
               </div>
+              <TimeLogReviewPanel
+                logs={reviewableTimeLogs}
+                trainees={visibleTrainees}
+                reviewingLogId={reviewingTimeLogId}
+                onApproveLog={(log) => reviewTimeLog(log, 'approved')}
+                onRejectLog={(log) => reviewTimeLog(log, 'rejected')}
+                onAdjustLog={adjustTimeLog}
+              />
               <TraineeTable
                 trainees={filteredTrainees}
                 clinics={clinics}
@@ -2751,6 +2770,75 @@ function TimeLogActions({
       <button type="button" onClick={() => onReject(log)} disabled={isReviewing} className="h-8 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-40">
         Reject
       </button>
+    </div>
+  );
+}
+
+function TimeLogReviewPanel({
+  logs,
+  trainees,
+  reviewingLogId,
+  onApproveLog,
+  onRejectLog,
+  onAdjustLog,
+}: {
+  logs: OjtTimeLog[];
+  trainees: Trainee[];
+  reviewingLogId: string | null;
+  onApproveLog: (log: OjtTimeLog) => void;
+  onRejectLog: (log: OjtTimeLog) => void;
+  onAdjustLog: (log: OjtTimeLog) => void;
+}) {
+  const traineeById = new Map(trainees.map((trainee) => [trainee.id, trainee]));
+  const pendingCount = logs.filter((log) => log.approval_status === 'pending').length;
+  const visibleLogs = logs.slice(0, 10);
+
+  return (
+    <div className="mb-6 rounded-lg border border-border bg-white p-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Time Log Review</p>
+          <p className="mt-1 text-xs text-foreground/55">Approve, reject, or adjust completed OJT time logs. Approved logs count toward rendered hours.</p>
+        </div>
+        <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">{pendingCount} pending</span>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        {visibleLogs.map((log) => {
+          const trainee = traineeById.get(log.trainee_id);
+          return (
+            <div key={log.id} className="grid gap-3 rounded-lg bg-[#f7f4f0] p-4 lg:grid-cols-[1.2fr_1fr_auto] lg:items-center">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-foreground">{trainee?.fullName ?? 'OJT trainee'}</p>
+                  <ApprovalPill status={log.approval_status ?? 'pending'} />
+                </div>
+                <p className="mt-1 text-xs text-foreground/50">{trainee?.schoolName || 'School not provided'}</p>
+                {log.notes && <p className="mt-2 text-sm text-foreground/60" style={adminClampStyle(2)}>{log.notes}</p>}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm text-foreground/60 sm:grid-cols-4 lg:grid-cols-2">
+                <ReviewFact label="Date" value={log.log_date} />
+                <ReviewFact label="Hours" value={Number(log.rendered_hours).toFixed(2)} />
+                <ReviewFact label="In" value={formatAdminDateTime(log.time_in)} />
+                <ReviewFact label="Out" value={log.time_out ? formatAdminDateTime(log.time_out) : 'Open'} />
+              </div>
+              <TimeLogActions log={log} reviewingLogId={reviewingLogId} onApprove={onApproveLog} onReject={onRejectLog} onAdjust={onAdjustLog} />
+            </div>
+          );
+        })}
+        {visibleLogs.length === 0 && (
+          <p className="rounded-lg bg-[#f7f4f0] p-5 text-center text-sm text-foreground/45">No completed time logs yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReviewFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground/40">{label}</p>
+      <p className="mt-0.5 truncate text-xs font-semibold text-foreground/65">{value}</p>
     </div>
   );
 }
