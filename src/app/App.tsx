@@ -16,12 +16,21 @@ import { FloatingEventsCarousel } from './components/FloatingEventsCarousel';
 import { PageViewTracker } from './components/PageViewTracker';
 
 const AdminApp = lazy(() => import('./admin/AdminApp').then((module) => ({ default: module.AdminApp })));
+const OjtPortal = lazy(() => import('./ojt/OjtPortal').then((module) => ({ default: module.OjtPortal })));
 
 export default function App() {
   if (window.location.pathname.startsWith('/admin')) {
     return (
       <Suspense fallback={<div className="min-h-screen bg-[#f7f4f0] p-8 text-foreground">Loading admin...</div>}>
         <AdminApp />
+      </Suspense>
+    );
+  }
+
+  if (window.location.pathname.startsWith('/ojt')) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-[#f7f4f0] p-8 text-foreground">Loading OJT portal...</div>}>
+        <OjtPortal />
       </Suspense>
     );
   }

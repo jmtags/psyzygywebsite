@@ -84,6 +84,16 @@ type TraineeRow = {
   photo_storage_path: string | null;
 };
 
+type OjtTimeLog = {
+  id: string;
+  trainee_id: string;
+  clinic_id: string;
+  log_date: string;
+  time_in: string;
+  time_out: string | null;
+  rendered_hours: number;
+};
+
 type OjtImportRow = {
   rowNumber: number;
   photoFileName: string;
@@ -315,6 +325,7 @@ export function AdminApp() {
   const [eventFiles, setEventFiles] = useState<File[]>([]);
 
   const [trainees, setTrainees] = useState<Trainee[]>([]);
+  const [ojtTimeLogs, setOjtTimeLogs] = useState<OjtTimeLog[]>([]);
   const [traineePhotoFile, setTraineePhotoFile] = useState<File | null>(null);
   const [selectedTrainee, setSelectedTrainee] = useState<Trainee | null>(null);
   const [editingTrainee, setEditingTrainee] = useState<Trainee | null>(null);
@@ -369,6 +380,13 @@ export function AdminApp() {
       return matchesStatus && matchesSearch;
     });
   }, [clinics, ojtSearch, ojtStatusFilter, visibleTrainees]);
+  const loggedHoursByTrainee = useMemo(() => {
+    const totals = new Map<string, number>();
+    ojtTimeLogs.forEach((log) => {
+      totals.set(log.trainee_id, (totals.get(log.trainee_id) ?? 0) + Number(log.rendered_hours || 0));
+    });
+    return totals;
+  }, [ojtTimeLogs]);
   const completedTrainees = visibleTrainees.filter((trainee) => trainee.status === 'completed');
 
   const notify = (message: string, type: AdminNoticeType = 'warning') => {
@@ -467,6 +485,18 @@ export function AdminApp() {
     }
 
     setTrainees(((traineeRows ?? []) as TraineeRow[]).map(mapTraineeRow));
+
+    const { data: timeLogRows, error: timeLogsError } = await supabase
+      .from('ojt_time_logs')
+      .select('id, trainee_id, clinic_id, log_date, time_in, time_out, rendered_hours')
+      .order('time_in', { ascending: false })
+      .limit(3000);
+
+    if (timeLogsError) {
+      setNotice(timeLogsError.message);
+    }
+
+    setOjtTimeLogs((timeLogRows ?? []) as OjtTimeLog[]);
 
     if (normalizedProfile.role === 'super_admin') {
       const { data: profileRows, error: profilesError } = await supabase
@@ -857,7 +887,7 @@ export function AdminApp() {
   };
 
   const exportOjtTrainees = () => {
-    const headers = ['full_name', 'clinic', 'school_name', 'course', 'date_of_birth', 'email', 'batch_name', 'total_hours', 'start_date', 'end_date', 'status', 'photo_url'];
+    const headers = ['full_name', 'clinic', 'school_name', 'course', 'date_of_birth', 'email', 'batch_name', 'required_hours', 'rendered_hours', 'start_date', 'end_date', 'status', 'photo_url'];
     const rows = filteredTrainees.map((trainee) => [
       trainee.fullName,
       clinics.find((clinic) => clinic.id === trainee.clinicId)?.name ?? 'Clinic',
@@ -867,6 +897,7 @@ export function AdminApp() {
       trainee.email,
       trainee.batchName,
       String(trainee.totalHours),
+      (loggedHoursByTrainee.get(trainee.id) ?? 0).toFixed(2),
       trainee.startDate,
       trainee.endDate,
       trainee.status,
@@ -1604,6 +1635,7 @@ export function AdminApp() {
               <TraineeTable
                 trainees={filteredTrainees}
                 clinics={clinics}
+                loggedHoursByTrainee={loggedHoursByTrainee}
                 onView={setSelectedTrainee}
                 onEdit={(trainee) => {
                   setEditingTrainee(trainee);
@@ -1631,6 +1663,8 @@ export function AdminApp() {
               {selectedTrainee && (
                 <OjtDetailsDialog
                   trainee={selectedTrainee}
+                  timeLogs={ojtTimeLogs.filter((log) => log.trainee_id === selectedTrainee.id)}
+                  loggedHours={loggedHoursByTrainee.get(selectedTrainee.id) ?? 0}
                   clinicName={clinics.find((clinic) => clinic.id === selectedTrainee.clinicId)?.name ?? 'Clinic'}
                   onClose={() => setSelectedTrainee(null)}
                 />
@@ -2277,10 +2311,14 @@ function OjtAddDialog({
 
 function OjtDetailsDialog({
   trainee,
+  timeLogs,
+  loggedHours,
   clinicName,
   onClose,
 }: {
   trainee: Trainee;
+  timeLogs: OjtTimeLog[];
+  loggedHours: number;
   clinicName: string;
   onClose: () => void;
 }) {
@@ -2314,9 +2352,40 @@ function OjtDetailsDialog({
             <DetailItem label="Date of birth" value={trainee.dateOfBirth || 'Not provided'} />
             <DetailItem label="Email" value={trainee.email || 'Not provided'} />
             <DetailItem label="Batch" value={trainee.batchName || 'Not provided'} />
-            <DetailItem label="Total hours" value={String(trainee.totalHours)} />
+            <DetailItem label="Required hours" value={String(trainee.totalHours)} />
+            <DetailItem label="Rendered hours" value={loggedHours.toFixed(2)} />
             <DetailItem label="Start date" value={trainee.startDate || 'Not provided'} />
             <DetailItem label="End date" value={trainee.endDate || 'Not provided'} />
+          </div>
+        </div>
+        <div className="border-t border-border p-5">
+          <h4 className="text-sm font-semibold text-foreground">Recent time logs</h4>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[620px] text-left text-sm">
+              <thead className="border-b border-border text-xs uppercase tracking-wide text-foreground/45">
+                <tr>
+                  <th className="py-3 pr-4">Date</th>
+                  <th className="py-3 pr-4">Time in</th>
+                  <th className="py-3 pr-4">Time out</th>
+                  <th className="py-3 pr-4">Hours</th>
+                </tr>
+              </thead>
+              <tbody>
+                {timeLogs.slice(0, 12).map((log) => (
+                  <tr key={log.id} className="border-b border-border/60">
+                    <td className="py-3 pr-4">{log.log_date}</td>
+                    <td className="py-3 pr-4 text-foreground/60">{formatAdminDateTime(log.time_in)}</td>
+                    <td className="py-3 pr-4 text-foreground/60">{log.time_out ? formatAdminDateTime(log.time_out) : 'Open'}</td>
+                    <td className="py-3 pr-4 text-foreground/60">{Number(log.rendered_hours).toFixed(2)}</td>
+                  </tr>
+                ))}
+                {timeLogs.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-5 text-center text-foreground/45">No time logs yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -2470,9 +2539,19 @@ function formatVisitLocation(visit: PageVisit) {
   return visit.timezone || 'Unknown';
 }
 
+function formatAdminDateTime(value: string) {
+  return new Date(value).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function TraineeTable({
   trainees,
   clinics,
+  loggedHoursByTrainee,
   onView,
   onEdit,
   onDelete,
@@ -2482,6 +2561,7 @@ function TraineeTable({
 }: {
   trainees: Trainee[];
   clinics: Clinic[];
+  loggedHoursByTrainee: Map<string, number>;
   onView: (trainee: Trainee) => void;
   onEdit: (trainee: Trainee) => void;
   onDelete: (trainee: Trainee) => void;
@@ -2491,7 +2571,7 @@ function TraineeTable({
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[1180px] text-left text-sm">
+      <table className="w-full min-w-[1260px] text-left text-sm">
         <thead className="border-b border-border text-xs uppercase tracking-wide text-foreground/45">
           <tr>
             <th className="py-3 pr-4">Photo</th>
@@ -2501,6 +2581,7 @@ function TraineeTable({
             <th className="py-3 pr-4">Email</th>
             <th className="py-3 pr-4">Birth date</th>
             <th className="py-3 pr-4">Hours</th>
+            <th className="py-3 pr-4">Rendered</th>
             <th className="py-3 pr-4">Status</th>
             <th className="py-3 pr-4">Actions</th>
           </tr>
@@ -2525,6 +2606,7 @@ function TraineeTable({
               <td className="py-4 pr-4 text-foreground/60">{trainee.email || '-'}</td>
               <td className="py-4 pr-4 text-foreground/60">{trainee.dateOfBirth || '-'}</td>
               <td className="py-4 pr-4 text-foreground/60">{trainee.totalHours}</td>
+              <td className="py-4 pr-4 text-foreground/60">{(loggedHoursByTrainee.get(trainee.id) ?? 0).toFixed(2)}</td>
               <td className="py-4 pr-4">
                 <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${trainee.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                   {trainee.status}

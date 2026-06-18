@@ -1,0 +1,325 @@
+import { useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
+import { Clock, LogIn, LogOut, RefreshCw } from 'lucide-react';
+import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
+
+type PortalProfile = {
+  trainee_id: string;
+  clinic_id: string;
+  full_name: string;
+  school_name: string | null;
+  course: string | null;
+  required_hours: number;
+  rendered_hours: number;
+  status: string;
+  clinic_name: string;
+};
+
+type PortalLog = {
+  id: string;
+  log_date: string;
+  time_in: string;
+  time_out: string | null;
+  rendered_hours: number;
+};
+
+type NoticeType = 'success' | 'warning' | 'error';
+
+export function OjtPortal() {
+  const [email, setEmail] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [profile, setProfile] = useState<PortalProfile | null>(null);
+  const [logs, setLogs] = useState<PortalLog[]>([]);
+  const [notice, setNotice] = useState('');
+  const [noticeType, setNoticeType] = useState<NoticeType>('warning');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const openLog = useMemo(() => logs.find((log) => !log.time_out) ?? null, [logs]);
+  const progress = profile?.required_hours ? Math.min(100, Math.round((Number(profile.rendered_hours) / profile.required_hours) * 100)) : 0;
+
+  const notify = (message: string, type: NoticeType = 'warning') => {
+    setNoticeType(type);
+    setNotice(message);
+  };
+
+  const loadPortalData = async (nextEmail = email, nextDateOfBirth = dateOfBirth) => {
+    if (!supabase || !nextEmail.trim() || !nextDateOfBirth) {
+      return;
+    }
+
+    setIsLoading(true);
+    setNotice('');
+    const credentials = { p_email: nextEmail.trim(), p_date_of_birth: nextDateOfBirth };
+    const { data: profileRows, error: profileError } = await supabase.rpc('ojt_portal_profile', credentials);
+
+    if (profileError) {
+      notify(profileError.message, 'error');
+      setIsLoading(false);
+      return;
+    }
+
+    const nextProfile = (profileRows?.[0] ?? null) as PortalProfile | null;
+    if (!nextProfile) {
+      notify('No active OJT record matched those details.', 'warning');
+      setProfile(null);
+      setLogs([]);
+      setIsLoading(false);
+      return;
+    }
+
+    const { data: logRows, error: logsError } = await supabase.rpc('ojt_portal_logs', credentials);
+    if (logsError) {
+      notify(logsError.message, 'error');
+    }
+
+    setProfile(nextProfile);
+    setLogs((logRows ?? []) as PortalLog[]);
+    window.localStorage.setItem('psyzygy_ojt_portal', JSON.stringify({ email: nextEmail.trim(), dateOfBirth: nextDateOfBirth }));
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem('psyzygy_ojt_portal');
+    if (!saved) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as { email?: string; dateOfBirth?: string };
+      if (parsed.email && parsed.dateOfBirth) {
+        setEmail(parsed.email);
+        setDateOfBirth(parsed.dateOfBirth);
+        void loadPortalData(parsed.email, parsed.dateOfBirth);
+      }
+    } catch {
+      window.localStorage.removeItem('psyzygy_ojt_portal');
+    }
+  }, []);
+
+  const timeIn = async () => {
+    if (!supabase || isSaving) {
+      return;
+    }
+
+    setIsSaving(true);
+    const { error } = await supabase.rpc('ojt_portal_time_in', { p_email: email.trim(), p_date_of_birth: dateOfBirth });
+    if (error) {
+      notify(error.message, 'error');
+    } else {
+      notify('Time in recorded.', 'success');
+      await loadPortalData();
+    }
+    setIsSaving(false);
+  };
+
+  const timeOut = async () => {
+    if (!supabase || isSaving) {
+      return;
+    }
+
+    setIsSaving(true);
+    const { error } = await supabase.rpc('ojt_portal_time_out', { p_email: email.trim(), p_date_of_birth: dateOfBirth });
+    if (error) {
+      notify(error.message, 'error');
+    } else {
+      notify('Time out recorded.', 'success');
+      await loadPortalData();
+    }
+    setIsSaving(false);
+  };
+
+  const logout = () => {
+    window.localStorage.removeItem('psyzygy_ojt_portal');
+    setProfile(null);
+    setLogs([]);
+    setEmail('');
+    setDateOfBirth('');
+    setNotice('');
+  };
+
+  if (!isSupabaseConfigured) {
+    return (
+      <PortalShell>
+        <PortalCard title="OJT Portal">
+          <Notice message="Supabase is not configured." type="error" />
+        </PortalCard>
+      </PortalShell>
+    );
+  }
+
+  return (
+    <PortalShell>
+      {!profile ? (
+        <PortalCard title="OJT Time Log">
+          <div className="space-y-4">
+            <Input label="Email" value={email} onChange={setEmail} type="email" />
+            <Input label="Date of birth" value={dateOfBirth} onChange={setDateOfBirth} type="date" />
+            {notice && <Notice message={notice} type={noticeType} />}
+            <button
+              type="button"
+              onClick={() => loadPortalData()}
+              disabled={isLoading || !email.trim() || !dateOfBirth}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <LogIn className="h-4 w-4" /> {isLoading ? 'Checking...' : 'Login'}
+            </button>
+          </div>
+        </PortalCard>
+      ) : (
+        <div className="mx-auto grid w-full max-w-5xl gap-5 px-4 py-8">
+          <div className="rounded-lg border border-border bg-white p-5">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/60">OJT Portal</p>
+                <h1 className="mt-2 text-3xl font-normal text-foreground" style={{ fontFamily: 'var(--font-display)' }}>{profile.full_name}</h1>
+                <p className="mt-1 text-sm text-foreground/55">{profile.school_name || 'School not provided'} | {profile.clinic_name}</p>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => loadPortalData()} className="flex h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
+                  <RefreshCw className="h-4 w-4" /> Refresh
+                </button>
+                <button type="button" onClick={logout} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
+                  Logout
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-3 md:grid-cols-3">
+              <Metric label="Required Hours" value={String(profile.required_hours)} />
+              <Metric label="Rendered Hours" value={Number(profile.rendered_hours).toFixed(2)} />
+              <Metric label="Progress" value={`${progress}%`} />
+            </div>
+
+            <div className="mt-5 h-3 overflow-hidden rounded-full bg-secondary">
+              <div className="h-full bg-primary" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+
+          {notice && <Notice message={notice} type={noticeType} />}
+
+          <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+            <div className="rounded-lg border border-border bg-white p-5">
+              <div className="flex items-center gap-2 text-primary">
+                <Clock className="h-5 w-5" />
+                <h2 className="text-lg font-semibold text-foreground">Today</h2>
+              </div>
+              <p className="mt-2 text-sm text-foreground/55">
+                {openLog ? `Timed in at ${formatDateTime(openLog.time_in)}.` : 'No open time log.'}
+              </p>
+              <div className="mt-5 grid gap-2">
+                <button
+                  type="button"
+                  onClick={timeIn}
+                  disabled={isSaving || Boolean(openLog)}
+                  className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <LogIn className="h-4 w-4" /> {isSaving ? 'Saving...' : 'Time In'}
+                </button>
+                <button
+                  type="button"
+                  onClick={timeOut}
+                  disabled={isSaving || !openLog}
+                  className="flex h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/70 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <LogOut className="h-4 w-4" /> {isSaving ? 'Saving...' : 'Time Out'}
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-white p-5">
+              <h2 className="text-lg font-semibold text-foreground">Recent Time Logs</h2>
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[620px] text-left text-sm">
+                  <thead className="border-b border-border text-xs uppercase tracking-wide text-foreground/45">
+                    <tr>
+                      <th className="py-3 pr-4">Date</th>
+                      <th className="py-3 pr-4">Time In</th>
+                      <th className="py-3 pr-4">Time Out</th>
+                      <th className="py-3 pr-4">Hours</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {logs.map((log) => (
+                      <tr key={log.id} className="border-b border-border/60">
+                        <td className="py-3 pr-4">{log.log_date}</td>
+                        <td className="py-3 pr-4 text-foreground/60">{formatDateTime(log.time_in)}</td>
+                        <td className="py-3 pr-4 text-foreground/60">{log.time_out ? formatDateTime(log.time_out) : 'Open'}</td>
+                        <td className="py-3 pr-4 text-foreground/60">{Number(log.rendered_hours).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                    {logs.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-6 text-center text-foreground/45">No time logs yet.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </PortalShell>
+  );
+}
+
+function PortalShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-screen bg-[#f7f4f0] text-foreground">
+      <div className="border-b border-border bg-white px-6 py-4">
+        <p className="text-sm font-semibold text-primary">PSYZYGY Psychological Center Inc.</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function PortalCard({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="mx-auto flex min-h-[calc(100vh-58px)] max-w-md items-center px-4">
+      <div className="w-full rounded-lg border border-border bg-white p-6 shadow-sm">
+        <h1 className="text-3xl font-normal text-foreground" style={{ fontFamily: 'var(--font-display)' }}>{title}</h1>
+        <p className="mb-6 mt-2 text-sm text-foreground/55">Login with your registered OJT email and date of birth.</p>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Input({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">{label}</span>
+      <input value={value} onChange={(event) => onChange(event.target.value)} type={type} className="h-11 w-full rounded-lg border border-border bg-white px-3 text-sm outline-none focus:border-primary" />
+    </label>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-[#f7f4f0] px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-foreground/45">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-primary">{value}</p>
+    </div>
+  );
+}
+
+function Notice({ message, type }: { message: string; type: NoticeType }) {
+  const styles = {
+    success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    warning: 'border-amber-200 bg-amber-50 text-amber-900',
+    error: 'border-red-200 bg-red-50 text-red-700',
+  };
+
+  return <div className={`rounded-lg border p-4 text-sm font-medium ${styles[type]}`}>{message}</div>;
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
