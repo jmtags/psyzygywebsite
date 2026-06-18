@@ -9,6 +9,7 @@ import {
   Camera,
   CheckCircle2,
   Download,
+  Eye,
   ImagePlus,
   Lock,
   LogOut,
@@ -300,6 +301,9 @@ export function AdminApp() {
 
   const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [traineePhotoFile, setTraineePhotoFile] = useState<File | null>(null);
+  const [selectedTrainee, setSelectedTrainee] = useState<Trainee | null>(null);
+  const [editingTrainee, setEditingTrainee] = useState<Trainee | null>(null);
+  const [editingTraineePhotoFile, setEditingTraineePhotoFile] = useState<File | null>(null);
   const [ojtBatchFile, setOjtBatchFile] = useState<File | null>(null);
   const [ojtBatchPhotoFiles, setOjtBatchPhotoFiles] = useState<File[]>([]);
   const [pendingOjtImport, setPendingOjtImport] = useState<{
@@ -1014,40 +1018,6 @@ export function AdminApp() {
     await saveOjtImportRows(remainingRows, pendingOjtImport.missingPhotoFiles);
   };
 
-  const deleteSelectedOjtExistingRecords = async () => {
-    if (!supabase || !pendingOjtImport || selectedDuplicateRows.length === 0) {
-      return;
-    }
-
-    if (!window.confirm('Delete selected existing OJT records and continue importing their uploaded rows?')) {
-      return;
-    }
-
-    const selectedRows = new Set(selectedDuplicateRows);
-    const selectedExistingIds = pendingOjtImport.duplicates
-      .filter((duplicate) => selectedRows.has(duplicate.row.rowNumber))
-      .map((duplicate) => duplicate.existing.id);
-
-    const { error } = await supabase
-      .from('ojt_trainees')
-      .delete()
-      .in('id', selectedExistingIds);
-
-    if (error) {
-      setNotice(error.message);
-      return;
-    }
-
-    const remainingDuplicates = pendingOjtImport.duplicates.filter((duplicate) => !selectedRows.has(duplicate.row.rowNumber));
-    if (remainingDuplicates.length > 0) {
-      setPendingOjtImport({ ...pendingOjtImport, duplicates: remainingDuplicates });
-      setSelectedDuplicateRows(remainingDuplicates.map((duplicate) => duplicate.row.rowNumber));
-      return;
-    }
-
-    await saveOjtImportRows(pendingOjtImport.rows, pendingOjtImport.missingPhotoFiles);
-  };
-
   const markCompleted = async (id: string) => {
     if (!supabase) {
       return;
@@ -1066,6 +1036,107 @@ export function AdminApp() {
     setTrainees((current) => current.map((trainee) => (
       trainee.id === id ? { ...trainee, status: 'completed' } : trainee
     )));
+  };
+
+  const saveEditedTrainee = async () => {
+    if (!supabase || !editingTrainee) {
+      return;
+    }
+
+    setNotice('');
+    if (!editingTrainee.fullName.trim()) {
+      setNotice('OJT trainee full name is required.');
+      return;
+    }
+
+    const updates = {
+      full_name: editingTrainee.fullName.trim(),
+      school_name: editingTrainee.schoolName.trim() || null,
+      course: editingTrainee.course.trim() || null,
+      total_hours: Number(editingTrainee.totalHours) || 0,
+      start_date: editingTrainee.startDate || null,
+      end_date: editingTrainee.endDate || null,
+      status: editingTrainee.status,
+      notes: editingTrainee.batchName.trim() || null,
+    };
+
+    const { error } = await supabase
+      .from('ojt_trainees')
+      .update(updates)
+      .eq('id', editingTrainee.id);
+
+    if (error) {
+      setNotice(error.message);
+      return;
+    }
+
+    if (editingTraineePhotoFile) {
+      if (editingTrainee.photoStoragePath) {
+        await supabase.storage.from('ojt-photos').remove([editingTrainee.photoStoragePath]);
+      }
+
+      const safeName = editingTraineePhotoFile.name.replace(/[^a-zA-Z0-9.-]/g, '-');
+      const storagePath = `${editingTrainee.clinicId}/${editingTrainee.id}/${Date.now()}-${safeName}`;
+      const { error: uploadError } = await supabase.storage.from('ojt-photos').upload(storagePath, editingTraineePhotoFile);
+
+      if (uploadError) {
+        setNotice(uploadError.message);
+        return;
+      }
+
+      const { data: publicUrlData } = supabase.storage.from('ojt-photos').getPublicUrl(storagePath);
+      const { error: photoUpdateError } = await supabase
+        .from('ojt_trainees')
+        .update({
+          photo_storage_path: storagePath,
+          photo_public_url: publicUrlData.publicUrl,
+        })
+        .eq('id', editingTrainee.id);
+
+      if (photoUpdateError) {
+        setNotice(photoUpdateError.message);
+        return;
+      }
+    }
+
+    setEditingTrainee(null);
+    setEditingTraineePhotoFile(null);
+    await loadAdminData();
+  };
+
+  const deleteTrainee = async (trainee: Trainee) => {
+    if (!supabase || !window.confirm(`Delete OJT record for ${trainee.fullName}?`)) {
+      return;
+    }
+
+    setNotice('');
+    if (trainee.photoStoragePath) {
+      const { error: storageError } = await supabase.storage.from('ojt-photos').remove([trainee.photoStoragePath]);
+      if (storageError) {
+        setNotice(storageError.message);
+        return;
+      }
+    }
+
+    const { error } = await supabase
+      .from('ojt_trainees')
+      .delete()
+      .eq('id', trainee.id);
+
+    if (error) {
+      setNotice(error.message);
+      return;
+    }
+
+    if (selectedTrainee?.id === trainee.id) {
+      setSelectedTrainee(null);
+    }
+    if (editingTrainee?.id === trainee.id) {
+      setEditingTrainee(null);
+      setEditingTraineePhotoFile(null);
+    }
+
+    await loadAdminData();
   };
 
   const generateCertificates = (selected = completedTrainees) => {
@@ -1356,7 +1427,39 @@ export function AdminApp() {
                   </button>
                 </div>
               </div>
-              <TraineeTable trainees={visibleTrainees} clinics={clinics} onComplete={markCompleted} onCertificate={(trainee) => generateCertificates([trainee])} />
+              <TraineeTable
+                trainees={visibleTrainees}
+                clinics={clinics}
+                onView={setSelectedTrainee}
+                onEdit={(trainee) => {
+                  setEditingTrainee(trainee);
+                  setEditingTraineePhotoFile(null);
+                }}
+                onDelete={deleteTrainee}
+                onComplete={markCompleted}
+                onCertificate={(trainee) => generateCertificates([trainee])}
+              />
+              {selectedTrainee && (
+                <OjtDetailsDialog
+                  trainee={selectedTrainee}
+                  clinicName={clinics.find((clinic) => clinic.id === selectedTrainee.clinicId)?.name ?? 'Clinic'}
+                  onClose={() => setSelectedTrainee(null)}
+                />
+              )}
+              {editingTrainee && (
+                <OjtEditDialog
+                  trainee={editingTrainee}
+                  setTrainee={setEditingTrainee}
+                  photoFile={editingTraineePhotoFile}
+                  setPhotoFile={setEditingTraineePhotoFile}
+                  clinicName={clinics.find((clinic) => clinic.id === editingTrainee.clinicId)?.name ?? 'Clinic'}
+                  onSave={saveEditedTrainee}
+                  onClose={() => {
+                    setEditingTrainee(null);
+                    setEditingTraineePhotoFile(null);
+                  }}
+                />
+              )}
               {pendingOjtImport && (
                 <OjtDuplicateDialog
                   duplicates={pendingOjtImport.duplicates}
@@ -1364,7 +1467,6 @@ export function AdminApp() {
                   setSelectedRows={setSelectedDuplicateRows}
                   onOverrideSelected={overrideSelectedOjtDuplicates}
                   onRejectSelected={rejectSelectedOjtDuplicates}
-                  onDeleteExistingSelected={deleteSelectedOjtExistingRecords}
                   onClose={() => {
                     setPendingOjtImport(null);
                     setSelectedDuplicateRows([]);
@@ -1788,7 +1890,6 @@ function OjtDuplicateDialog({
   setSelectedRows,
   onOverrideSelected,
   onRejectSelected,
-  onDeleteExistingSelected,
   onClose,
 }: {
   duplicates: OjtDuplicateReview[];
@@ -1796,7 +1897,6 @@ function OjtDuplicateDialog({
   setSelectedRows: (rows: number[]) => void;
   onOverrideSelected: () => void;
   onRejectSelected: () => void;
-  onDeleteExistingSelected: () => void;
   onClose: () => void;
 }) {
   const selectedSet = new Set(selectedRows);
@@ -1813,7 +1913,7 @@ function OjtDuplicateDialog({
         <div className="flex flex-col gap-3 border-b border-border p-5 md:flex-row md:items-center md:justify-between">
           <div>
             <h3 className="text-xl font-semibold text-foreground">Existing OJT records found</h3>
-            <p className="mt-1 text-sm text-foreground/55">Select duplicate rows, then override, reject, or delete the existing record.</p>
+            <p className="mt-1 text-sm text-foreground/55">Select duplicate rows, then override the existing record or reject the new row.</p>
           </div>
           <button type="button" onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
             Cancel Import
@@ -1869,9 +1969,6 @@ function OjtDuplicateDialog({
         </div>
 
         <div className="flex flex-col gap-2 border-t border-border p-5 md:flex-row md:items-center md:justify-end">
-          <button type="button" onClick={onDeleteExistingSelected} disabled={selectedRows.length === 0} className="flex h-10 items-center justify-center gap-2 rounded-lg border border-red-200 px-4 text-sm font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-40">
-            <Trash2 className="h-4 w-4" /> Delete Existing Selected
-          </button>
           <button type="button" onClick={onRejectSelected} disabled={selectedRows.length === 0} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65 disabled:cursor-not-allowed disabled:opacity-40">
             Reject Selected New Rows
           </button>
@@ -1880,6 +1977,137 @@ function OjtDuplicateDialog({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function OjtDetailsDialog({
+  trainee,
+  clinicName,
+  onClose,
+}: {
+  trainee: Trainee;
+  clinicName: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-foreground/70 p-4" role="dialog" aria-modal="true">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-white px-5 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/60">OJT Details</p>
+            <h3 className="text-xl font-normal text-foreground" style={{ fontFamily: 'var(--font-display)' }}>{trainee.fullName}</h3>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-foreground/60 hover:text-primary" aria-label="Close OJT details">
+            x
+          </button>
+        </div>
+        <div className="grid gap-6 p-5 md:grid-cols-[220px_1fr]">
+          <div className="aspect-[3/4] overflow-hidden rounded-lg bg-secondary">
+            {trainee.photoUrl ? (
+              <img src={trainee.photoUrl} alt={trainee.fullName} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full items-center justify-center text-foreground/35">
+                <Camera className="h-10 w-10" strokeWidth={1.5} />
+              </div>
+            )}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <DetailItem label="Clinic" value={clinicName} />
+            <DetailItem label="Status" value={trainee.status} />
+            <DetailItem label="School" value={trainee.schoolName || 'Not provided'} />
+            <DetailItem label="Course" value={trainee.course || 'Not provided'} />
+            <DetailItem label="Batch" value={trainee.batchName || 'Not provided'} />
+            <DetailItem label="Total hours" value={String(trainee.totalHours)} />
+            <DetailItem label="Start date" value={trainee.startDate || 'Not provided'} />
+            <DetailItem label="End date" value={trainee.endDate || 'Not provided'} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OjtEditDialog({
+  trainee,
+  setTrainee,
+  photoFile,
+  setPhotoFile,
+  clinicName,
+  onSave,
+  onClose,
+}: {
+  trainee: Trainee;
+  setTrainee: (trainee: Trainee) => void;
+  photoFile: File | null;
+  setPhotoFile: (file: File | null) => void;
+  clinicName: string;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-foreground/70 p-4" role="dialog" aria-modal="true">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-white px-5 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/60">Edit OJT</p>
+            <h3 className="text-xl font-normal text-foreground" style={{ fontFamily: 'var(--font-display)' }}>{trainee.fullName}</h3>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-foreground/60 hover:text-primary" aria-label="Close edit OJT">
+            x
+          </button>
+        </div>
+        <div className="grid gap-4 p-5 md:grid-cols-2">
+          <Input label="Full name" value={trainee.fullName} onChange={(value) => setTrainee({ ...trainee, fullName: value })} />
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Clinic</span>
+            <input value={clinicName} readOnly className="h-11 w-full rounded-lg border border-border bg-secondary px-3 text-sm text-foreground/60 outline-none" />
+          </label>
+          <Input label="School" value={trainee.schoolName} onChange={(value) => setTrainee({ ...trainee, schoolName: value })} />
+          <Input label="Course" value={trainee.course} onChange={(value) => setTrainee({ ...trainee, course: value })} />
+          <Input label="Batch" value={trainee.batchName} onChange={(value) => setTrainee({ ...trainee, batchName: value })} />
+          <Input label="Hours" value={String(trainee.totalHours)} onChange={(value) => setTrainee({ ...trainee, totalHours: Number(value) || 0 })} type="number" />
+          <Input label="Start date" value={trainee.startDate} onChange={(value) => setTrainee({ ...trainee, startDate: value })} type="date" />
+          <Input label="End date" value={trainee.endDate} onChange={(value) => setTrainee({ ...trainee, endDate: value })} type="date" />
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Status</span>
+            <select value={trainee.status} onChange={(event) => setTrainee({ ...trainee, status: event.target.value as OjtStatus })} className="h-11 w-full rounded-lg border border-border bg-white px-3 text-sm">
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
+              <option value="withdrawn">Withdrawn</option>
+            </select>
+          </label>
+          <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-primary/30 bg-primary/5 px-3 py-2">
+            <ImagePlus className="h-5 w-5 text-primary" strokeWidth={1.5} />
+            <span className="min-w-0 text-sm font-semibold text-foreground" style={adminClampStyle(1)}>
+              {photoFile ? photoFile.name : 'Replace OJT photo'}
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(event) => setPhotoFile(event.target.files?.[0] ?? null)}
+            />
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border p-5">
+          <button type="button" onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
+            Cancel
+          </button>
+          <button type="button" onClick={onSave} className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
+            <Save className="h-4 w-4" /> Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-[#f7f4f0] px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-foreground/45">{label}</p>
+      <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
     </div>
   );
 }
@@ -1945,17 +2173,23 @@ function formatVisitLocation(visit: PageVisit) {
 function TraineeTable({
   trainees,
   clinics,
+  onView,
+  onEdit,
+  onDelete,
   onComplete,
   onCertificate,
 }: {
   trainees: Trainee[];
   clinics: Clinic[];
+  onView: (trainee: Trainee) => void;
+  onEdit: (trainee: Trainee) => void;
+  onDelete: (trainee: Trainee) => void;
   onComplete: (id: string) => void | Promise<void>;
   onCertificate: (trainee: Trainee) => void;
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[840px] text-left text-sm">
+      <table className="w-full min-w-[980px] text-left text-sm">
         <thead className="border-b border-border text-xs uppercase tracking-wide text-foreground/45">
           <tr>
             <th className="py-3 pr-4">Photo</th>
@@ -1991,7 +2225,13 @@ function TraineeTable({
                 </span>
               </td>
               <td className="py-4 pr-4">
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => onView(trainee)} className="flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold text-foreground/65">
+                    <Eye className="h-3.5 w-3.5" /> View
+                  </button>
+                  <button type="button" onClick={() => onEdit(trainee)} className="flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold text-foreground/65">
+                    <Pencil className="h-3.5 w-3.5" /> Edit
+                  </button>
                   {trainee.status !== 'completed' && (
                     <button type="button" onClick={() => onComplete(trainee.id)} className="flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold text-foreground/65">
                       <CheckCircle2 className="h-3.5 w-3.5" /> Complete
@@ -1999,6 +2239,9 @@ function TraineeTable({
                   )}
                   <button type="button" onClick={() => onCertificate(trainee)} className="flex h-9 items-center gap-1 rounded-lg bg-primary px-3 text-xs font-semibold text-white">
                     <Download className="h-3.5 w-3.5" /> PDF
+                  </button>
+                  <button type="button" onClick={() => onDelete(trainee)} className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600">
+                    <Trash2 className="h-3.5 w-3.5" /> Delete
                   </button>
                 </div>
               </td>
