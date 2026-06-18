@@ -18,6 +18,7 @@ import {
   Save,
   School,
   Trash2,
+  Upload,
   UserCog,
   Users,
 } from 'lucide-react';
@@ -117,6 +118,11 @@ const tabs: Array<{ key: TabKey; label: string; icon: LucideIcon; superOnly?: bo
 
 const emptyClinic = { id: '', name: '', slug: '', address: '', phone: '', email: '' };
 const emptyProfile: Profile = { id: '', full_name: '', role: 'clinic_admin', clinic_id: '', is_active: true };
+const ojtTemplateHeaders = ['full_name', 'school_name', 'course', 'batch_name', 'total_hours', 'start_date', 'end_date'];
+const ojtTemplateRows = [
+  ['Juan Dela Cruz', 'University of Example', 'BS Psychology', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30'],
+  ['Maria Santos', 'Example State College', 'AB Psychology', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30'],
+];
 
 function mapTraineeRow(row: TraineeRow): Trainee {
   return {
@@ -133,6 +139,70 @@ function mapTraineeRow(row: TraineeRow): Trainee {
     photoUrl: row.photo_public_url,
     photoStoragePath: row.photo_storage_path,
   };
+}
+
+function escapeCsvCell(value: string) {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+function buildCsv(headers: string[], rows: string[][]) {
+  return [headers, ...rows]
+    .map((row) => row.map(escapeCsvCell).join(','))
+    .join('\r\n');
+}
+
+function parseCsv(text: string) {
+  const rows: string[][] = [];
+  let current = '';
+  let row: string[] = [];
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const nextChar = text[index + 1];
+
+    if (char === '"' && inQuotes && nextChar === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      row.push(current.trim());
+      current = '';
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') {
+        index += 1;
+      }
+      row.push(current.trim());
+      if (row.some(Boolean)) {
+        rows.push(row);
+      }
+      row = [];
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  row.push(current.trim());
+  if (row.some(Boolean)) {
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function isValidCsvDate(value: string) {
+  if (!value) {
+    return true;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const date = new Date(`${value}T00:00:00`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 export function AdminApp() {
@@ -164,6 +234,7 @@ export function AdminApp() {
 
   const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [traineePhotoFile, setTraineePhotoFile] = useState<File | null>(null);
+  const [ojtBatchFile, setOjtBatchFile] = useState<File | null>(null);
   const [newTrainee, setNewTrainee] = useState({
     fullName: '',
     schoolName: '',
@@ -617,6 +688,89 @@ export function AdminApp() {
     await loadAdminData();
   };
 
+  const downloadOjtTemplate = () => {
+    const csv = buildCsv(ojtTemplateHeaders, ojtTemplateRows);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'ojt-batch-template.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const uploadOjtBatch = async () => {
+    if (!supabase || !activeClinicId || !ojtBatchFile) {
+      return;
+    }
+
+    setNotice('');
+    const csvText = await ojtBatchFile.text();
+    const parsedRows = parseCsv(csvText);
+
+    if (parsedRows.length < 2) {
+      setNotice('Upload a CSV with headers and at least one OJT trainee.');
+      return;
+    }
+
+    const headers = parsedRows[0].map((header) => header.trim().toLowerCase());
+    const missingHeaders = ojtTemplateHeaders.filter((header) => !headers.includes(header));
+    if (missingHeaders.length > 0) {
+      setNotice(`Missing CSV column(s): ${missingHeaders.join(', ')}`);
+      return;
+    }
+
+    const headerIndex = Object.fromEntries(headers.map((header, index) => [header, index]));
+    const rowsToInsert = [];
+
+    for (const [rowIndex, row] of parsedRows.slice(1).entries()) {
+      const rowNumber = rowIndex + 2;
+      const fullName = row[headerIndex.full_name]?.trim() ?? '';
+      const totalHoursValue = row[headerIndex.total_hours]?.trim() ?? '';
+      const startDate = row[headerIndex.start_date]?.trim() ?? '';
+      const endDate = row[headerIndex.end_date]?.trim() ?? '';
+      const totalHours = Number(totalHoursValue);
+
+      if (!fullName) {
+        setNotice(`Row ${rowNumber}: full_name is required.`);
+        return;
+      }
+
+      if (totalHoursValue && (!Number.isFinite(totalHours) || totalHours < 0)) {
+        setNotice(`Row ${rowNumber}: total_hours must be a valid number.`);
+        return;
+      }
+
+      if (!isValidCsvDate(startDate) || !isValidCsvDate(endDate)) {
+        setNotice(`Row ${rowNumber}: dates must use YYYY-MM-DD format.`);
+        return;
+      }
+
+      rowsToInsert.push({
+        clinic_id: activeClinicId,
+        full_name: fullName,
+        school_name: row[headerIndex.school_name]?.trim() || null,
+        course: row[headerIndex.course]?.trim() || null,
+        total_hours: totalHoursValue ? totalHours : 0,
+        start_date: startDate || null,
+        end_date: endDate || null,
+        status: 'active' as OjtStatus,
+        notes: row[headerIndex.batch_name]?.trim() || null,
+        created_by: authUser?.id,
+      });
+    }
+
+    const { error } = await supabase.from('ojt_trainees').insert(rowsToInsert);
+    if (error) {
+      setNotice(error.message);
+      return;
+    }
+
+    setOjtBatchFile(null);
+    setNotice(`${rowsToInsert.length} OJT trainee(s) imported.`);
+    await loadAdminData();
+  };
+
   const markCompleted = async (id: string) => {
     if (!supabase) {
       return;
@@ -889,6 +1043,30 @@ export function AdminApp() {
                 <button type="button" onClick={addTrainee} className="mt-auto flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
                   <Plus className="h-4 w-4" /> Add OJT
                 </button>
+              </div>
+              <div className="mb-6 flex flex-col gap-3 rounded-lg border border-border bg-white p-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Batch import OJT trainees</p>
+                  <p className="mt-1 text-xs text-foreground/55">Use the CSV template, then upload the completed file for the selected clinic.</p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <button type="button" onClick={downloadOjtTemplate} className="flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/70">
+                    <Download className="h-4 w-4" /> Template
+                  </button>
+                  <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-primary/35 px-4 text-sm font-semibold text-foreground/70">
+                    <Upload className="h-4 w-4 text-primary" />
+                    <span className="max-w-48 truncate">{ojtBatchFile ? ojtBatchFile.name : 'Choose CSV'}</span>
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      className="sr-only"
+                      onChange={(event) => setOjtBatchFile(event.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  <button type="button" onClick={uploadOjtBatch} disabled={!ojtBatchFile} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
+                    <Upload className="h-4 w-4" /> Import
+                  </button>
+                </div>
               </div>
               <TraineeTable trainees={visibleTrainees} clinics={clinics} onComplete={markCompleted} onCertificate={(trainee) => generateCertificates([trainee])} />
             </Panel>
