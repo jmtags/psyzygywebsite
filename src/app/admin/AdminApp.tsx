@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { User } from '@supabase/supabase-js';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
@@ -1997,13 +1998,19 @@ function AdminNotice({ message, type }: { message: string; type: AdminNoticeType
     error: 'border-red-200 bg-red-50 text-red-700 shadow-red-950/10',
   };
 
-  return (
-    <div className="fixed left-3 right-3 top-3 z-[140] sm:left-auto sm:w-full sm:max-w-md" role="status" aria-live="polite">
+  const notice = (
+    <div className="pointer-events-none fixed left-3 right-3 top-3 z-[9999] sm:left-auto sm:w-full sm:max-w-md" role="status" aria-live="polite">
       <div className={`rounded-lg border p-4 text-sm font-medium shadow-xl ${styles[type]}`}>
         {message}
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return notice;
+  }
+
+  return createPortal(notice, document.body);
 }
 
 function Field({ label, type = 'text', placeholder }: { label: string; type?: string; placeholder?: string }) {
