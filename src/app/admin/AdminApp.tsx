@@ -365,6 +365,10 @@ export function AdminApp() {
   const [isImportingOjt, setIsImportingOjt] = useState(false);
   const [ojtSearch, setOjtSearch] = useState('');
   const [ojtStatusFilter, setOjtStatusFilter] = useState<'all' | OjtStatus>('all');
+  const [timeLogStatusFilter, setTimeLogStatusFilter] = useState<'all' | OjtTimeLog['approval_status']>('pending');
+  const [timeLogSearch, setTimeLogSearch] = useState('');
+  const [timeLogDateFrom, setTimeLogDateFrom] = useState('');
+  const [timeLogDateTo, setTimeLogDateTo] = useState('');
   const [ojtBatchFile, setOjtBatchFile] = useState<File | null>(null);
   const [ojtBatchPhotoFiles, setOjtBatchPhotoFiles] = useState<File[]>([]);
   const [pendingOjtImport, setPendingOjtImport] = useState<{
@@ -428,6 +432,28 @@ export function AdminApp() {
       }),
     [ojtTimeLogs, visibleTraineeIds],
   );
+  const filteredReviewableTimeLogs = useMemo(() => {
+    const traineeById = new Map(visibleTrainees.map((trainee) => [trainee.id, trainee]));
+    const query = normalizeRecordKey(timeLogSearch);
+    return reviewableTimeLogs.filter((log) => {
+      const trainee = traineeById.get(log.trainee_id);
+      const status = log.approval_status ?? 'pending';
+      const matchesStatus = timeLogStatusFilter === 'all' || status === timeLogStatusFilter;
+      const matchesDateFrom = !timeLogDateFrom || log.log_date >= timeLogDateFrom;
+      const matchesDateTo = !timeLogDateTo || log.log_date <= timeLogDateTo;
+      const haystack = normalizeRecordKey([
+        trainee?.fullName ?? '',
+        trainee?.schoolName ?? '',
+        trainee?.course ?? '',
+        trainee?.email ?? '',
+        log.notes ?? '',
+        log.log_date,
+        status,
+      ].join(' '));
+      const matchesSearch = !query || haystack.includes(query);
+      return matchesStatus && matchesDateFrom && matchesDateTo && matchesSearch;
+    });
+  }, [reviewableTimeLogs, timeLogDateFrom, timeLogDateTo, timeLogSearch, timeLogStatusFilter, visibleTrainees]);
   const completedTrainees = visibleTrainees.filter((trainee) => trainee.status === 'completed');
 
   const notify = (message: string, type: AdminNoticeType = 'warning') => {
@@ -1037,6 +1063,35 @@ export function AdminApp() {
     const link = document.createElement('a');
     link.href = url;
     link.download = `ojt-trainees-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportOjtTimeLogs = () => {
+    const traineeById = new Map(visibleTrainees.map((trainee) => [trainee.id, trainee]));
+    const headers = ['trainee_name', 'school_name', 'course', 'email', 'log_date', 'time_in', 'time_out', 'rendered_hours', 'approval_status', 'approved_at', 'notes'];
+    const rows = filteredReviewableTimeLogs.map((log) => {
+      const trainee = traineeById.get(log.trainee_id);
+      return [
+        trainee?.fullName ?? '',
+        trainee?.schoolName ?? '',
+        trainee?.course ?? '',
+        trainee?.email ?? '',
+        log.log_date,
+        formatAdminDateTime(log.time_in),
+        log.time_out ? formatAdminDateTime(log.time_out) : '',
+        Number(log.rendered_hours).toFixed(2),
+        log.approval_status ?? 'pending',
+        log.approved_at ? formatAdminDateTime(log.approved_at) : '',
+        log.notes ?? '',
+      ];
+    });
+    const csv = buildCsv(headers, rows);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ojt-time-logs-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -1812,8 +1867,18 @@ export function AdminApp() {
                 </div>
               </div>
               <TimeLogReviewPanel
-                logs={reviewableTimeLogs}
+                logs={filteredReviewableTimeLogs}
+                totalCount={reviewableTimeLogs.length}
                 trainees={visibleTrainees}
+                statusFilter={timeLogStatusFilter}
+                setStatusFilter={setTimeLogStatusFilter}
+                search={timeLogSearch}
+                setSearch={setTimeLogSearch}
+                dateFrom={timeLogDateFrom}
+                setDateFrom={setTimeLogDateFrom}
+                dateTo={timeLogDateTo}
+                setDateTo={setTimeLogDateTo}
+                onExport={exportOjtTimeLogs}
                 reviewingLogId={reviewingTimeLogId}
                 onApproveLog={(log) => reviewTimeLog(log, 'approved')}
                 onRejectLog={(log) => reviewTimeLog(log, 'rejected')}
@@ -2776,14 +2841,34 @@ function TimeLogActions({
 
 function TimeLogReviewPanel({
   logs,
+  totalCount,
   trainees,
+  statusFilter,
+  setStatusFilter,
+  search,
+  setSearch,
+  dateFrom,
+  setDateFrom,
+  dateTo,
+  setDateTo,
+  onExport,
   reviewingLogId,
   onApproveLog,
   onRejectLog,
   onAdjustLog,
 }: {
   logs: OjtTimeLog[];
+  totalCount: number;
   trainees: Trainee[];
+  statusFilter: 'all' | OjtTimeLog['approval_status'];
+  setStatusFilter: (status: 'all' | OjtTimeLog['approval_status']) => void;
+  search: string;
+  setSearch: (value: string) => void;
+  dateFrom: string;
+  setDateFrom: (value: string) => void;
+  dateTo: string;
+  setDateTo: (value: string) => void;
+  onExport: () => void;
   reviewingLogId: string | null;
   onApproveLog: (log: OjtTimeLog) => void;
   onRejectLog: (log: OjtTimeLog) => void;
@@ -2800,7 +2885,39 @@ function TimeLogReviewPanel({
           <p className="text-sm font-semibold text-foreground">Time Log Review</p>
           <p className="mt-1 text-xs text-foreground/55">Approve, reject, or adjust completed OJT time logs. Approved logs count toward rendered hours.</p>
         </div>
-        <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">{pendingCount} pending</span>
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">{pendingCount} pending</span>
+          <span className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground/60">{logs.length} of {totalCount}</span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_150px_150px_150px_auto] lg:items-end">
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Search logs</span>
+          <div className="flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-3">
+            <Search className="h-4 w-4 text-foreground/35" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Name, school, notes"
+              className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none"
+            />
+          </div>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Review status</span>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | OjtTimeLog['approval_status'])} className="h-10 w-full rounded-lg border border-border bg-white px-3 text-sm">
+            <option value="all">All</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </label>
+        <Input label="Date from" value={dateFrom} onChange={setDateFrom} type="date" />
+        <Input label="Date to" value={dateTo} onChange={setDateTo} type="date" />
+        <button type="button" onClick={onExport} disabled={logs.length === 0} className="flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/70 disabled:cursor-not-allowed disabled:opacity-40">
+          <Download className="h-4 w-4" /> Export
+        </button>
       </div>
 
       <div className="mt-4 grid gap-3">
