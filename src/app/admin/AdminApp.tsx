@@ -45,6 +45,7 @@ type Clinic = {
 
 type Profile = {
   id: string;
+  email: string | null;
   full_name: string;
   role: AdminRole;
   clinic_id: string | null;
@@ -163,7 +164,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: LucideIcon; superOnly?: bo
 ];
 
 const emptyClinic = { id: '', name: '', slug: '', address: '', phone: '', email: '' };
-const emptyProfile: Profile = { id: '', full_name: '', role: 'clinic_admin', clinic_id: '', is_active: true };
+const emptyProfile: Profile = { id: '', email: '', full_name: '', role: 'clinic_admin', clinic_id: '', is_active: true };
 const ojtTemplateHeaders = ['full_name', 'school_name', 'course', 'date_of_birth', 'email', 'batch_name', 'total_hours', 'start_date', 'end_date', 'photo_file'];
 const ojtTemplateRows = [
   ['Juan Dela Cruz', 'University of Example', 'BS Psychology', '2003-01-15', 'juan@example.com', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30', ''],
@@ -504,7 +505,7 @@ export function AdminApp() {
 
     const { data: ownProfile, error: profileError } = await supabase
       .from('user_profiles')
-      .select('id, full_name, role, clinic_id, is_active')
+      .select('id, email, full_name, role, clinic_id, is_active')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -568,7 +569,7 @@ export function AdminApp() {
     if (normalizedProfile.role === 'super_admin') {
       const { data: profileRows, error: profilesError } = await supabase
         .from('user_profiles')
-        .select('id, full_name, role, clinic_id, is_active')
+        .select('id, email, full_name, role, clinic_id, is_active')
         .order('full_name');
 
       if (profilesError) {
@@ -650,7 +651,7 @@ export function AdminApp() {
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword });
+    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail.trim().toLowerCase(), password: loginPassword });
     if (error) {
       setNotice(error.message);
       setLoading(false);
@@ -713,6 +714,7 @@ export function AdminApp() {
     const nextEmail = newUserEmail.trim().toLowerCase();
     const nextPassword = newUserPassword;
     const payload = {
+      email: nextEmail || null,
       full_name: profileForm.full_name.trim(),
       role: profileForm.role,
       clinic_id: profileForm.role === 'super_admin' ? null : profileForm.clinic_id || null,
@@ -731,6 +733,11 @@ export function AdminApp() {
 
     if (editingProfileId && nextPassword && nextPassword.length < 6) {
       notify('New password must be at least 6 characters.', 'warning');
+      return;
+    }
+
+    if (editingProfileId && (!nextEmail || !isValidEmail(nextEmail))) {
+      notify('Enter a valid login email.', 'warning');
       return;
     }
 
@@ -768,28 +775,29 @@ export function AdminApp() {
     } else {
       setIsSavingProfile(true);
       try {
+        if (nextEmail || nextPassword) {
+          const authResponse = await supabase.functions.invoke('admin-create-user', {
+            body: {
+              action: 'update-user',
+              user_id: editingProfileId,
+              email: nextEmail,
+              password: nextPassword || undefined,
+            },
+          });
+
+          if (authResponse.error) {
+            notify(await getFunctionErrorMessage(authResponse.error), 'error');
+            return;
+          }
+        }
+
         const profileResponse = await supabase.from('user_profiles').update(payload).eq('id', editingProfileId);
         if (profileResponse.error) {
           notify(profileResponse.error.message, 'error');
           return;
         }
 
-        if (nextPassword) {
-          const passwordResponse = await supabase.functions.invoke('admin-create-user', {
-            body: {
-              action: 'update-password',
-              user_id: editingProfileId,
-              password: nextPassword,
-            },
-          });
-
-          if (passwordResponse.error) {
-            notify(await getFunctionErrorMessage(passwordResponse.error), 'error');
-            return;
-          }
-        }
-
-        successMessage = nextPassword ? 'User profile and password updated.' : 'User profile updated.';
+        successMessage = nextEmail || nextPassword ? 'User profile and login credentials updated.' : 'User profile updated.';
       } finally {
         setIsSavingProfile(false);
       }
@@ -2282,7 +2290,7 @@ function UserCrud({
         )}
         {editingId && (
           <>
-            <Input label="Auth User ID" value={form.id} onChange={(value) => setForm({ ...form, id: value })} />
+            <Input label="Login email" value={email} onChange={setEmail} type="email" />
             <Input label="New password (optional)" value={password} onChange={setPassword} type="password" />
           </>
         )}
@@ -2325,8 +2333,8 @@ function UserCrud({
               <th className="py-3 pr-4">Name</th>
               <th className="py-3 pr-4">Role</th>
               <th className="py-3 pr-4">Clinic</th>
+              <th className="py-3 pr-4">Email</th>
               <th className="py-3 pr-4">Status</th>
-              <th className="py-3 pr-4">Auth ID</th>
               <th className="py-3 pr-4">Actions</th>
             </tr>
           </thead>
@@ -2336,11 +2344,11 @@ function UserCrud({
                 <td className="py-4 pr-4 font-medium">{userProfile.full_name}</td>
                 <td className="py-4 pr-4 text-foreground/60">{userProfile.role}</td>
                 <td className="py-4 pr-4 text-foreground/60">{clinics.find((clinic) => clinic.id === userProfile.clinic_id)?.name ?? 'All clinics'}</td>
+                <td className="py-4 pr-4 text-foreground/60">{userProfile.email || 'No email saved'}</td>
                 <td className="py-4 pr-4">{userProfile.is_active ? 'Active' : 'Inactive'}</td>
-                <td className="py-4 pr-4 text-xs text-foreground/45">{userProfile.id}</td>
                 <td className="py-4 pr-4">
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => { setEditingId(userProfile.id); setForm(userProfile); setEmail(''); setPassword(''); }} disabled={isSaving || deletingId === userProfile.id} className="flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40">
+                    <button type="button" onClick={() => { setEditingId(userProfile.id); setForm(userProfile); setEmail(userProfile.email ?? ''); setPassword(''); }} disabled={isSaving || deletingId === userProfile.id} className="flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40">
                       <Pencil className="h-3.5 w-3.5" /> Edit
                     </button>
                     <button type="button" onClick={() => onDelete(userProfile.id)} disabled={isSaving || Boolean(deletingId)} className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-40">

@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (profileError || requesterProfile?.role !== 'super_admin' || requesterProfile?.is_active !== true) {
-      return json({ error: 'Only active super admins can create users.' }, 403);
+      return json({ error: 'Only active super admins can manage users.' }, 403);
     }
 
     const body = await req.json();
@@ -53,26 +53,55 @@ Deno.serve(async (req) => {
     const clinicId = body.clinic_id || null;
     const isActive = body.is_active !== false;
 
-    if (action === 'update-password') {
+    if (action === 'update-password' || action === 'update-user') {
       const userId = String(body.user_id ?? '').trim();
 
-      if (!userId || password.length < 6) {
-        return json({ error: 'Auth user ID and a password with at least 6 characters are required.' }, 400);
+      if (!userId) {
+        return json({ error: 'Auth user ID is required.' }, 400);
       }
 
-      const { error: updatePasswordError } = await adminClient.auth.admin.updateUserById(userId, {
-        password,
-        email_confirm: true,
-      });
+      if (email && !isValidEmail(email)) {
+        return json({ error: 'A valid email is required.' }, 400);
+      }
+
+      if (password && password.length < 6) {
+        return json({ error: 'Password must be at least 6 characters.' }, 400);
+      }
+
+      if (!email && !password) {
+        return json({ error: 'Email or password is required.' }, 400);
+      }
+
+      const updates: { email?: string; password?: string; email_confirm?: boolean } = {};
+      if (email) {
+        updates.email = email;
+        updates.email_confirm = true;
+      }
+      if (password) {
+        updates.password = password;
+      }
+
+      const { error: updatePasswordError } = await adminClient.auth.admin.updateUserById(userId, updates);
 
       if (updatePasswordError) {
         return json({ error: updatePasswordError.message }, 400);
       }
 
-      return json({ user_id: userId });
+      if (email) {
+        const { error: profileEmailError } = await adminClient
+          .from('user_profiles')
+          .update({ email })
+          .eq('id', userId);
+
+        if (profileEmailError) {
+          return json({ error: profileEmailError.message }, 400);
+        }
+      }
+
+      return json({ user_id: userId, email: email || undefined });
     }
 
-    if (!email || !password || !fullName || !['super_admin', 'clinic_admin', 'staff'].includes(role)) {
+    if (!email || !isValidEmail(email) || !password || !fullName || !['super_admin', 'clinic_admin', 'staff'].includes(role)) {
       return json({ error: 'Email, password, full name, and valid role are required.' }, 400);
     }
 
@@ -97,6 +126,7 @@ Deno.serve(async (req) => {
 
     const { error: insertError } = await adminClient.from('user_profiles').insert({
       id: createdUser.user.id,
+      email,
       full_name: fullName,
       role,
       clinic_id: role === 'super_admin' ? null : clinicId,
@@ -119,6 +149,10 @@ function json(payload: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function getPublishableKey() {
