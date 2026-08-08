@@ -9,8 +9,10 @@ import {
   Building2,
   Camera,
   CheckCircle2,
+  AlarmClockPlus,
   Download,
   Eye,
+  History,
   ImagePlus,
   Lock,
   LogOut,
@@ -100,6 +102,18 @@ type OjtTimeLog = {
   approved_at: string | null;
 };
 
+type OjtTimeLogAuditLog = {
+  id: string;
+  time_log_id: string | null;
+  trainee_id: string;
+  clinic_id: string;
+  action: 'created' | 'updated' | 'approved' | 'rejected' | 'adjusted';
+  changed_by: string | null;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  created_at: string;
+};
+
 type OjtImportRow = {
   rowNumber: number;
   photoFileName: string;
@@ -165,6 +179,14 @@ const tabs: Array<{ key: TabKey; label: string; icon: LucideIcon; superOnly?: bo
 
 const emptyClinic = { id: '', name: '', slug: '', address: '', phone: '', email: '' };
 const emptyProfile: Profile = { id: '', email: '', full_name: '', role: 'clinic_admin', clinic_id: '', is_active: true };
+const emptyManualTimeLogForm = {
+  traineeId: '',
+  logDate: new Date().toISOString().slice(0, 10),
+  timeIn: '08:00',
+  timeOut: '17:00',
+  approvalStatus: 'approved' as 'pending' | 'approved',
+  notes: '',
+};
 const ojtTemplateHeaders = ['full_name', 'school_name', 'course', 'date_of_birth', 'email', 'batch_name', 'total_hours', 'start_date', 'end_date', 'photo_file'];
 const ojtTemplateRows = [
   ['Juan Dela Cruz', 'University of Example', 'BS Psychology', '2003-01-15', 'juan@example.com', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30', ''],
@@ -354,6 +376,7 @@ export function AdminApp() {
 
   const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [ojtTimeLogs, setOjtTimeLogs] = useState<OjtTimeLog[]>([]);
+  const [ojtTimeLogAuditLogs, setOjtTimeLogAuditLogs] = useState<OjtTimeLogAuditLog[]>([]);
   const [traineePhotoFile, setTraineePhotoFile] = useState<File | null>(null);
   const [selectedTrainee, setSelectedTrainee] = useState<Trainee | null>(null);
   const [editingTrainee, setEditingTrainee] = useState<Trainee | null>(null);
@@ -363,6 +386,8 @@ export function AdminApp() {
   const [isSavingEditedTrainee, setIsSavingEditedTrainee] = useState(false);
   const [deletingTraineeId, setDeletingTraineeId] = useState<string | null>(null);
   const [reviewingTimeLogId, setReviewingTimeLogId] = useState<string | null>(null);
+  const [manualTimeLog, setManualTimeLog] = useState(emptyManualTimeLogForm);
+  const [isAddingManualTimeLog, setIsAddingManualTimeLog] = useState(false);
   const [isImportingOjt, setIsImportingOjt] = useState(false);
   const [ojtSearch, setOjtSearch] = useState('');
   const [ojtStatusFilter, setOjtStatusFilter] = useState<'all' | OjtStatus>('all');
@@ -455,6 +480,10 @@ export function AdminApp() {
       return matchesStatus && matchesDateFrom && matchesDateTo && matchesSearch;
     });
   }, [reviewableTimeLogs, timeLogDateFrom, timeLogDateTo, timeLogSearch, timeLogStatusFilter, visibleTrainees]);
+  const recentOjtAuditLogs = useMemo(
+    () => ojtTimeLogAuditLogs.filter((log) => visibleTraineeIds.has(log.trainee_id)).slice(0, 8),
+    [ojtTimeLogAuditLogs, visibleTraineeIds],
+  );
   const completedTrainees = visibleTrainees.filter((trainee) => trainee.status === 'completed');
 
   const notify = (message: string, type: AdminNoticeType = 'warning') => {
@@ -464,6 +493,25 @@ export function AdminApp() {
 
   const clearNotice = () => {
     setNotice('');
+  };
+
+  const loadOjtAuditLogs = async () => {
+    if (!supabase) {
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('ojt_time_log_audit_logs')
+      .select('id, time_log_id, trainee_id, clinic_id, action, changed_by, old_values, new_values, created_at')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if (error) {
+      notify(error.message, 'error');
+      return;
+    }
+
+    setOjtTimeLogAuditLogs((data ?? []) as OjtTimeLogAuditLog[]);
   };
 
   useEffect(() => {
@@ -565,6 +613,18 @@ export function AdminApp() {
     }
 
     setOjtTimeLogs((timeLogRows ?? []) as OjtTimeLog[]);
+
+    const { data: auditRows, error: auditError } = await supabase
+      .from('ojt_time_log_audit_logs')
+      .select('id, time_log_id, trainee_id, clinic_id, action, changed_by, old_values, new_values, created_at')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if (auditError) {
+      setNotice(auditError.message);
+    }
+
+    setOjtTimeLogAuditLogs((auditRows ?? []) as OjtTimeLogAuditLog[]);
 
     if (normalizedProfile.role === 'super_admin') {
       const { data: profileRows, error: profilesError } = await supabase
@@ -1075,6 +1135,64 @@ export function AdminApp() {
     URL.revokeObjectURL(url);
   };
 
+  const addManualOjtTimeLog = async () => {
+    if (!supabase || isAddingManualTimeLog) {
+      return;
+    }
+
+    clearNotice();
+    const trainee = visibleTrainees.find((item) => item.id === manualTimeLog.traineeId);
+    if (!trainee) {
+      notify('Choose an OJT trainee before adding manual time.', 'warning');
+      return;
+    }
+
+    if (!manualTimeLog.logDate || !manualTimeLog.timeIn || !manualTimeLog.timeOut) {
+      notify('Date, time in, and time out are required.', 'warning');
+      return;
+    }
+
+    const timeIn = new Date(`${manualTimeLog.logDate}T${manualTimeLog.timeIn}`);
+    const timeOut = new Date(`${manualTimeLog.logDate}T${manualTimeLog.timeOut}`);
+    if (Number.isNaN(timeIn.getTime()) || Number.isNaN(timeOut.getTime())) {
+      notify('Enter a valid manual time log date and time.', 'warning');
+      return;
+    }
+
+    const hours = (timeOut.getTime() - timeIn.getTime()) / 36e5;
+    if (hours <= 0 || hours > 24) {
+      notify('Manual time must be greater than 0 and not more than 24 hours.', 'warning');
+      return;
+    }
+
+    setIsAddingManualTimeLog(true);
+    try {
+      const { data, error } = await supabase.rpc('admin_add_ojt_manual_time_log', {
+        p_trainee_id: trainee.id,
+        p_time_in: timeIn.toISOString(),
+        p_time_out: timeOut.toISOString(),
+        p_notes: manualTimeLog.notes.trim() || null,
+        p_approval_status: manualTimeLog.approvalStatus,
+      });
+
+      if (error) {
+        notify(error.message, 'error');
+        return;
+      }
+
+      const savedLog = Array.isArray(data) ? data[0] as OjtTimeLog | undefined : undefined;
+      if (savedLog) {
+        setOjtTimeLogs((current) => [savedLog, ...current].sort((first, second) => new Date(second.time_in).getTime() - new Date(first.time_in).getTime()));
+      }
+
+      setManualTimeLog({ ...emptyManualTimeLogForm, traineeId: trainee.id });
+      await loadOjtAuditLogs();
+      notify(`Manual time added for ${trainee.fullName}.`, 'success');
+    } finally {
+      setIsAddingManualTimeLog(false);
+    }
+  };
+
   const exportOjtTimeLogs = () => {
     const traineeById = new Map(visibleTrainees.map((trainee) => [trainee.id, trainee]));
     const headers = ['trainee_name', 'school_name', 'course', 'email', 'log_date', 'time_in', 'time_out', 'rendered_hours', 'approval_status', 'approved_at', 'notes'];
@@ -1418,6 +1536,7 @@ export function AdminApp() {
           ? { ...item, ...payload, rendered_hours: typeof adjustedHours === 'number' ? adjustedHours : item.rendered_hours }
           : item
       )));
+      void loadOjtAuditLogs();
       notify(`Time log ${status}.`, 'success');
     } finally {
       setReviewingTimeLogId(null);
@@ -1874,6 +1993,13 @@ export function AdminApp() {
                   </button>
                 </div>
               </div>
+              <ManualTimeLogPanel
+                trainees={visibleTrainees}
+                form={manualTimeLog}
+                setForm={setManualTimeLog}
+                onSave={addManualOjtTimeLog}
+                isSaving={isAddingManualTimeLog}
+              />
               <TimeLogReviewPanel
                 logs={filteredReviewableTimeLogs}
                 totalCount={reviewableTimeLogs.length}
@@ -1892,6 +2018,7 @@ export function AdminApp() {
                 onRejectLog={(log) => reviewTimeLog(log, 'rejected')}
                 onAdjustLog={adjustTimeLog}
               />
+              <OjtAuditLogPanel logs={recentOjtAuditLogs} trainees={visibleTrainees} />
               <TraineeTable
                 trainees={filteredTrainees}
                 clinics={clinics}
@@ -1924,6 +2051,7 @@ export function AdminApp() {
                 <OjtDetailsDialog
                   trainee={selectedTrainee}
                   timeLogs={ojtTimeLogs.filter((log) => log.trainee_id === selectedTrainee.id)}
+                  auditLogs={ojtTimeLogAuditLogs.filter((log) => log.trainee_id === selectedTrainee.id).slice(0, 8)}
                   loggedHours={loggedHoursByTrainee.get(selectedTrainee.id) ?? 0}
                   clinicName={clinics.find((clinic) => clinic.id === selectedTrainee.clinicId)?.name ?? 'Clinic'}
                   reviewingLogId={reviewingTimeLogId}
@@ -2592,9 +2720,101 @@ function OjtAddDialog({
   );
 }
 
+function ManualTimeLogPanel({
+  trainees,
+  form,
+  setForm,
+  onSave,
+  isSaving,
+}: {
+  trainees: Trainee[];
+  form: typeof emptyManualTimeLogForm;
+  setForm: (form: typeof emptyManualTimeLogForm) => void;
+  onSave: () => void;
+  isSaving: boolean;
+}) {
+  return (
+    <div className="mb-6 rounded-lg border border-border bg-white p-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Add Manual OJT Time</p>
+          <p className="mt-1 text-xs text-foreground/55">Create a completed time log when an admin needs to encode rendered hours manually.</p>
+        </div>
+        <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+          <AlarmClockPlus className="h-3.5 w-3.5" /> Admin entry
+        </span>
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-[1.4fr_150px_120px_120px_140px_auto] lg:items-end">
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">OJT trainee</span>
+          <select value={form.traineeId} onChange={(event) => setForm({ ...form, traineeId: event.target.value })} className="h-10 w-full rounded-lg border border-border bg-white px-3 text-sm">
+            <option value="">Choose trainee</option>
+            {trainees.map((trainee) => (
+              <option key={trainee.id} value={trainee.id}>{trainee.fullName}</option>
+            ))}
+          </select>
+        </label>
+        <Input label="Date" value={form.logDate} onChange={(value) => setForm({ ...form, logDate: value })} type="date" />
+        <Input label="Time in" value={form.timeIn} onChange={(value) => setForm({ ...form, timeIn: value })} type="time" />
+        <Input label="Time out" value={form.timeOut} onChange={(value) => setForm({ ...form, timeOut: value })} type="time" />
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Status</span>
+          <select value={form.approvalStatus} onChange={(event) => setForm({ ...form, approvalStatus: event.target.value as 'pending' | 'approved' })} className="h-10 w-full rounded-lg border border-border bg-white px-3 text-sm">
+            <option value="approved">Approved</option>
+            <option value="pending">Pending review</option>
+          </select>
+        </label>
+        <button type="button" onClick={onSave} disabled={isSaving || trainees.length === 0} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
+          <Plus className="h-4 w-4" /> {isSaving ? 'Adding...' : 'Add Time'}
+        </button>
+      </div>
+      <label className="mt-3 block">
+        <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Notes</span>
+        <textarea
+          value={form.notes}
+          onChange={(event) => setForm({ ...form, notes: event.target.value })}
+          placeholder="Reason or source for the manual entry"
+          className="min-h-20 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+        />
+      </label>
+    </div>
+  );
+}
+
+function OjtAuditLogPanel({ logs, trainees }: { logs: OjtTimeLogAuditLog[]; trainees: Trainee[] }) {
+  const traineeById = new Map(trainees.map((trainee) => [trainee.id, trainee]));
+
+  return (
+    <div className="mb-6 rounded-lg border border-border bg-white p-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Recent Time Log Activity</p>
+          <p className="mt-1 text-xs text-foreground/55">Manual entries and review changes are tracked here.</p>
+        </div>
+        <History className="h-5 w-5 text-primary/70" strokeWidth={1.6} />
+      </div>
+      <div className="mt-3 grid gap-2">
+        {logs.map((log) => (
+          <div key={log.id} className="grid gap-2 rounded-lg bg-[#f7f4f0] p-3 text-sm sm:grid-cols-[1fr_auto] sm:items-center">
+            <div className="min-w-0">
+              <p className="font-semibold text-foreground">{formatAuditAction(log)} · {traineeById.get(log.trainee_id)?.fullName ?? 'OJT trainee'}</p>
+              <p className="mt-1 text-xs text-foreground/55">{formatAuditDetails(log)}</p>
+            </div>
+            <p className="text-xs font-semibold text-foreground/45">{formatAdminDateTime(log.created_at)}</p>
+          </div>
+        ))}
+        {logs.length === 0 && (
+          <p className="rounded-lg bg-[#f7f4f0] p-5 text-center text-sm text-foreground/45">No time log activity yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function OjtDetailsDialog({
   trainee,
   timeLogs,
+  auditLogs,
   loggedHours,
   clinicName,
   reviewingLogId,
@@ -2605,6 +2825,7 @@ function OjtDetailsDialog({
 }: {
   trainee: Trainee;
   timeLogs: OjtTimeLog[];
+  auditLogs: OjtTimeLogAuditLog[];
   loggedHours: number;
   clinicName: string;
   reviewingLogId: string | null;
@@ -2709,6 +2930,24 @@ function OjtDetailsDialog({
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="mt-5 border-t border-border pt-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-foreground">Time log activity</h4>
+              <History className="h-4 w-4 text-primary/70" strokeWidth={1.6} />
+            </div>
+            <div className="grid gap-2">
+              {auditLogs.map((log) => (
+                <div key={log.id} className="rounded-lg bg-[#f7f4f0] p-3">
+                  <p className="text-sm font-semibold text-foreground">{formatAuditAction(log)}</p>
+                  <p className="mt-1 text-xs text-foreground/55">{formatAuditDetails(log)}</p>
+                  <p className="mt-1 text-xs text-foreground/40">{formatAdminDateTime(log.created_at)}</p>
+                </div>
+              ))}
+              {auditLogs.length === 0 && (
+                <p className="rounded-lg bg-[#f7f4f0] p-4 text-center text-sm text-foreground/45">No tracked activity yet.</p>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -3033,6 +3272,45 @@ function formatAdminDateTime(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function formatAuditAction(log: OjtTimeLogAuditLog) {
+  const labels: Record<OjtTimeLogAuditLog['action'], string> = {
+    created: 'Created time log',
+    updated: 'Updated time log',
+    approved: 'Approved time log',
+    rejected: 'Rejected time log',
+    adjusted: 'Adjusted hours',
+  };
+
+  return labels[log.action];
+}
+
+function auditValue(values: Record<string, unknown> | null, key: string) {
+  const value = values?.[key];
+  return typeof value === 'string' || typeof value === 'number' ? value : null;
+}
+
+function formatAuditDetails(log: OjtTimeLogAuditLog) {
+  const nextHours = auditValue(log.new_values, 'rendered_hours');
+  const previousHours = auditValue(log.old_values, 'rendered_hours');
+  const nextStatus = auditValue(log.new_values, 'approval_status');
+  const timeIn = auditValue(log.new_values, 'time_in');
+  const timeOut = auditValue(log.new_values, 'time_out');
+
+  if (log.action === 'adjusted' && previousHours !== null && nextHours !== null) {
+    return `${Number(previousHours).toFixed(2)} hrs to ${Number(nextHours).toFixed(2)} hrs`;
+  }
+
+  if ((log.action === 'approved' || log.action === 'rejected') && nextStatus) {
+    return `Status changed to ${String(nextStatus)}${nextHours !== null ? `, ${Number(nextHours).toFixed(2)} hrs` : ''}`;
+  }
+
+  if (timeIn && timeOut && nextHours !== null) {
+    return `${formatAdminDateTime(String(timeIn))} to ${formatAdminDateTime(String(timeOut))}, ${Number(nextHours).toFixed(2)} hrs`;
+  }
+
+  return 'Time log details updated';
 }
 
 function TraineeTable({
