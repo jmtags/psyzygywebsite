@@ -4,6 +4,7 @@ import { Hero } from './components/Hero';
 import { About } from './components/About';
 import { TrustSignals } from './components/TrustSignals';
 import { Services } from './components/Services';
+import { OjtAnnouncement } from './components/OjtAnnouncement';
 import { VisionMissionValues } from './components/VisionMissionValues';
 import { Branches } from './components/Branches';
 import { Events } from './components/Events';
@@ -52,6 +53,7 @@ export default function App() {
       <About />
       <TrustSignals />
       <Services />
+      <OjtAnnouncement />
       <VisionMissionValues />
       <Branches />
       <Events />
