@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Clock, LogIn, LogOut, RefreshCw, UserRound, X } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
+import logoImage from 'figma:asset/3f22aafd57fb7e51342ec2f8e809e8c46ef58cba.png';
 
 type PortalProfile = {
   trainee_id: string;
@@ -403,8 +404,14 @@ function StudentInfoDialog({
 function PortalShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-[#f7f4f0] text-foreground">
-      <div className="border-b border-border bg-white px-4 py-4 sm:px-6">
-        <p className="text-sm font-semibold text-primary">PSYZYGY Psychological Center Inc.</p>
+      <div className="border-b border-border bg-white/90 px-4 py-4 backdrop-blur sm:px-6">
+        <div className="mx-auto flex max-w-6xl items-center gap-3">
+          <img src={logoImage} alt="PSYZYGY Logo" className="h-9 w-9 object-contain" />
+          <div>
+            <p className="text-sm font-semibold leading-none text-primary">PSYZYGY</p>
+            <p className="mt-1 text-xs text-foreground/50">Psychological Center Inc.</p>
+          </div>
+        </div>
       </div>
       {children}
     </div>
@@ -413,12 +420,48 @@ function PortalShell({ children }: { children: ReactNode }) {
 
 function PortalCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-58px)] w-full max-w-md items-center px-3 py-6 sm:px-4">
-      <div className="w-full rounded-lg border border-border bg-white p-5 shadow-sm sm:p-6">
-        <h1 className="text-3xl font-normal text-foreground sm:text-4xl" style={{ fontFamily: 'var(--font-display)' }}>{title}</h1>
-        <p className="mb-6 mt-2 text-sm text-foreground/55">Login with your registered OJT email and date of birth.</p>
+    <div className="mx-auto grid min-h-[calc(100vh-74px)] w-full max-w-6xl items-center gap-6 px-4 py-8 lg:grid-cols-[1fr_430px] lg:px-8">
+      <div className="hidden lg:block">
+        <div className="max-w-xl">
+          <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-2xl border border-border bg-white shadow-sm">
+            <img src={logoImage} alt="" className="h-14 w-14 object-contain" />
+          </div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-accent">OJT Student Portal</p>
+          <h1 className="mt-4 text-5xl font-normal leading-tight text-foreground" style={{ fontFamily: 'var(--font-display)' }}>
+            Track your time with clarity.
+          </h1>
+          <p className="mt-5 text-base font-light leading-relaxed text-foreground/60">
+            Students can time in, time out, add daily notes, and check approved rendered hours in one secure place.
+          </p>
+          <div className="mt-8 grid max-w-lg grid-cols-3 gap-3">
+            <LoginFeature title="Time logs" text="Record daily OJT hours." />
+            <LoginFeature title="Progress" text="See rendered hours." />
+            <LoginFeature title="Notes" text="Send daily updates." />
+          </div>
+        </div>
+      </div>
+      <div className="w-full rounded-2xl border border-border bg-white p-6 shadow-[0_24px_70px_rgba(30,42,53,0.12)] sm:p-8">
+        <div className="mb-7 flex items-center gap-3 lg:hidden">
+          <img src={logoImage} alt="PSYZYGY Logo" className="h-12 w-12 object-contain" />
+          <div>
+            <p className="text-sm font-semibold text-primary">PSYZYGY</p>
+            <p className="text-xs text-foreground/50">Psychological Center Inc.</p>
+          </div>
+        </div>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/60">Student Access</p>
+        <h2 className="mt-3 text-3xl font-normal text-foreground sm:text-4xl" style={{ fontFamily: 'var(--font-display)' }}>{title}</h2>
+        <p className="mb-6 mt-2 text-sm leading-relaxed text-foreground/55">Login with your registered OJT email and date of birth.</p>
         {children}
       </div>
+    </div>
+  );
+}
+
+function LoginFeature({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-white/75 p-4">
+      <p className="text-sm font-semibold text-foreground">{title}</p>
+      <p className="mt-1 text-xs leading-relaxed text-foreground/55">{text}</p>
     </div>
   );
 }
