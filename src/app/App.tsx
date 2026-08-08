@@ -17,12 +17,21 @@ import { PageViewTracker } from './components/PageViewTracker';
 
 const AdminApp = lazy(() => import('./admin/AdminApp').then((module) => ({ default: module.AdminApp })));
 const OjtPortal = lazy(() => import('./ojt/OjtPortal').then((module) => ({ default: module.OjtPortal })));
+const OjtCoordinatorPortal = lazy(() => import('./ojt/OjtCoordinatorPortal').then((module) => ({ default: module.OjtCoordinatorPortal })));
 
 export default function App() {
   if (window.location.pathname.startsWith('/admin')) {
     return (
       <Suspense fallback={<div className="min-h-screen bg-[#f7f4f0] p-8 text-foreground">Loading admin...</div>}>
         <AdminApp />
+      </Suspense>
+    );
+  }
+
+  if (window.location.pathname.startsWith('/ojtcoordinator')) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-[#f7f4f0] p-8 text-foreground">Loading coordinator portal...</div>}>
+        <OjtCoordinatorPortal />
       </Suspense>
     );
   }

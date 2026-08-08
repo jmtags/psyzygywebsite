@@ -95,6 +95,7 @@ type OjtSchool = {
   id: string;
   clinic_id: string;
   name: string;
+  coordinator_access_code: string | null;
   coordinator_name: string | null;
   coordinator_email: string | null;
   coordinator_phone: string | null;
@@ -194,7 +195,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: LucideIcon; superOnly?: bo
 
 const emptyClinic = { id: '', name: '', slug: '', address: '', phone: '', email: '' };
 const emptyProfile: Profile = { id: '', email: '', full_name: '', role: 'clinic_admin', clinic_id: '', is_active: true };
-const emptySchoolForm = { id: '', clinic_id: '', name: '', coordinator_name: '', coordinator_email: '', coordinator_phone: '', address: '', notes: '' };
+const emptySchoolForm = { id: '', clinic_id: '', name: '', coordinator_name: '', coordinator_email: '', coordinator_phone: '', coordinator_access_code: '', address: '', notes: '' };
 const ojtPageSize = 10;
 const emptyManualTimeLogForm = {
   traineeId: '',
@@ -663,7 +664,7 @@ export function AdminApp() {
 
     const { data: schoolRows, error: schoolsError } = await supabase
       .from('ojt_schools')
-      .select('id, clinic_id, name, coordinator_name, coordinator_email, coordinator_phone, address, notes')
+      .select('id, clinic_id, name, coordinator_name, coordinator_email, coordinator_phone, coordinator_access_code, address, notes')
       .order('name');
 
     if (schoolsError) {
@@ -1116,6 +1117,7 @@ export function AdminApp() {
         coordinator_name: schoolForm.coordinator_name.trim() || null,
         coordinator_email: schoolForm.coordinator_email.trim() || null,
         coordinator_phone: schoolForm.coordinator_phone.trim() || null,
+        coordinator_access_code: schoolForm.coordinator_access_code.trim() || null,
         address: schoolForm.address.trim() || null,
         notes: schoolForm.notes.trim() || null,
       };
@@ -1155,6 +1157,7 @@ export function AdminApp() {
       coordinator_name: school.coordinator_name ?? '',
       coordinator_email: school.coordinator_email ?? '',
       coordinator_phone: school.coordinator_phone ?? '',
+      coordinator_access_code: school.coordinator_access_code ?? '',
       address: school.address ?? '',
       notes: school.notes ?? '',
     });
@@ -2933,6 +2936,7 @@ function SchoolManagementPanel({
           <Input label="Coordinator name" value={form.coordinator_name} onChange={(value) => setForm({ ...form, coordinator_name: value })} />
           <Input label="Coordinator email" value={form.coordinator_email} onChange={(value) => setForm({ ...form, coordinator_email: value })} type="email" />
           <Input label="Coordinator phone" value={form.coordinator_phone} onChange={(value) => setForm({ ...form, coordinator_phone: value })} />
+          <Input label="Coordinator access code" value={form.coordinator_access_code} onChange={(value) => setForm({ ...form, coordinator_access_code: value })} />
           <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Address</span>
             <textarea value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} className="min-h-20 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
@@ -2975,6 +2979,7 @@ function SchoolManagementPanel({
                 </div>
                 <p className="mt-1 text-sm text-foreground/60">{school.coordinator_name || 'No coordinator name'}</p>
                 <p className="mt-1 text-xs text-foreground/50">{[school.coordinator_email, school.coordinator_phone].filter(Boolean).join(' · ') || 'No coordinator contact'}</p>
+                <p className="mt-1 text-xs text-foreground/45">Portal: /ojtcoordinator {school.coordinator_access_code ? 'enabled' : 'needs access code'}</p>
                 {school.address && <p className="mt-2 text-xs text-foreground/50" style={adminClampStyle(2)}>{school.address}</p>}
               </div>
               <div className="flex flex-wrap gap-2 lg:justify-end">
