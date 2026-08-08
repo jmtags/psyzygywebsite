@@ -20,6 +20,8 @@ export function Navigation() {
   const navItems = [
     { label: 'About', id: 'about' },
     { label: 'Services', id: 'services' },
+    { label: 'OJT', id: 'ojt-announcement' },
+    { label: 'Our Purpose', id: 'purpose' },
     { label: 'Branches', id: 'branches' },
     { label: 'Events', id: 'events' },
     { label: 'Contact', id: 'contact' },
@@ -60,7 +62,7 @@ export function Navigation() {
             </div>
           </button>
 
-          <div className="hidden md:flex items-center gap-8">
+          <div className="hidden md:flex items-center gap-5 lg:gap-7">
             {navItems.map((item) => (
               <button
                 key={item.id}

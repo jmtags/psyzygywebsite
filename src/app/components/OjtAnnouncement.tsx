@@ -1,4 +1,4 @@
-import { GraduationCap, MessageCircle, MonitorCheck, School, UsersRound } from 'lucide-react';
+import { GraduationCap, MessageCircle, MonitorCheck, School } from 'lucide-react';
 
 const highlights = [
   {
@@ -53,13 +53,6 @@ export function OjtAnnouncement() {
                   style={{ fontFamily: 'var(--font-body)' }}
                 >
                   <MessageCircle className="h-4 w-4" /> Message Us
-                </a>
-                <a
-                  href="/ojtcoordinator"
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-5 text-sm font-semibold text-foreground/70 transition hover:border-primary/30 hover:text-primary"
-                  style={{ fontFamily: 'var(--font-body)' }}
-                >
-                  <UsersRound className="h-4 w-4" /> Coordinator Portal
                 </a>
               </div>
             </div>
