@@ -1,0 +1,152 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Clinic Admin User Manual</title>
+  <style>
+    @page { size: A4; margin: 16mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: #2c2520;
+      background: #f7f4f0;
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.55;
+    }
+    .page {
+      background: white;
+      border: 1px solid #e6ded6;
+      border-radius: 10px;
+      padding: 28px;
+      min-height: calc(297mm - 32mm);
+    }
+    h1 {
+      margin: 0;
+      color: #4d3327;
+      font-size: 30px;
+      line-height: 1.15;
+    }
+    h2 {
+      margin: 24px 0 8px;
+      color: #4d3327;
+      font-size: 19px;
+      page-break-after: avoid;
+    }
+    h3 {
+      margin: 18px 0 6px;
+      color: #4d3327;
+      font-size: 15px;
+    }
+    p { margin: 6px 0 10px; }
+    .subtitle { color: #6f6259; font-size: 14px; margin-top: 8px; }
+    .audience {
+      display: inline-block;
+      margin-top: 14px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      color: #6b3f2f;
+      background: #f3e8df;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .screenshot {
+      margin: 22px 0;
+      border: 1px solid #ded4ca;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f7f4f0;
+      page-break-inside: avoid;
+    }
+    .screenshot img { display: block; width: 100%; }
+    .caption { padding: 9px 12px; color: #6f6259; font-size: 12px; }
+    ol { padding-left: 22px; }
+    li { margin: 8px 0; }
+    .box {
+      margin: 14px 0;
+      padding: 12px 14px;
+      border-left: 4px solid #7d4c3b;
+      background: #fbf7f3;
+      border-radius: 6px;
+      page-break-inside: avoid;
+    }
+    .simple {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 14px 0;
+    }
+    .tile {
+      padding: 12px;
+      border-radius: 8px;
+      background: #f7f4f0;
+      border: 1px solid #e6ded6;
+      font-size: 13px;
+    }
+    .footer {
+      margin-top: 24px;
+      padding-top: 12px;
+      border-top: 1px solid #e6ded6;
+      color: #8a7d73;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Clinic Admin User Manual</h1>
+    <p class="subtitle">A simple guide for managing OJT students, schools, time logs, and activity history.</p>
+    <span class="audience">For clinic admins</span>
+    <div class="screenshot">
+      <img src="screenshots/clinic-admin-login.png" alt="Clinic Admin User Manual screenshot" />
+      <div class="caption">Actual screenshot from the website.</div>
+    </div>
+    
+<div class="box"><strong>Big idea:</strong> The clinic admin keeps the OJT list clean. Think of it like a school notebook: add students, choose their school, check their hours, and approve time logs.</div>
+<h2>1. How to Login</h2>
+<ol>
+  <li>Open the website and go to <strong>/admin</strong>.</li>
+  <li>Type your admin email.</li>
+  <li>Type your password.</li>
+  <li>Click <strong>Login</strong>.</li>
+</ol>
+<h2>2. Where to Work on OJT</h2>
+<p>After logging in, click the <strong>OJT</strong> button in the admin menu. You will see four small tabs.</p>
+<div class="simple">
+  <div class="tile"><strong>Manage OJT</strong><br />Add, search, edit, delete, and export students.</div>
+  <div class="tile"><strong>Schools</strong><br />Add schools and coordinator details.</div>
+  <div class="tile"><strong>Time Logs Review</strong><br />Approve, reject, or adjust hours.</div>
+</div>
+<h2>3. Add a School First</h2>
+<ol>
+  <li>Open the <strong>Schools</strong> tab.</li>
+  <li>Type the school name.</li>
+  <li>Type the coordinator name, email, phone, and address if you have them.</li>
+  <li>Type a simple access code for the coordinator.</li>
+  <li>Click <strong>Add School</strong>.</li>
+</ol>
+<div class="box"><strong>Easy rule:</strong> Add the school before adding the student. Then you can pick the school from a list.</div>
+<h2>4. Add an OJT Student</h2>
+<ol>
+  <li>Open <strong>Manage OJT</strong>.</li>
+  <li>Click <strong>Add</strong>.</li>
+  <li>Type the student name.</li>
+  <li>Select the school from the dropdown.</li>
+  <li>Fill in course, birthday, email, required hours, start date, and end date.</li>
+  <li>Click <strong>Add OJT</strong>.</li>
+</ol>
+<h2>5. Review Time Logs</h2>
+<ol>
+  <li>Open <strong>Time Logs Review</strong>.</li>
+  <li>Read the student name, date, time in, time out, and notes.</li>
+  <li>Click <strong>Approve</strong> if the time is okay.</li>
+  <li>Click <strong>Adjust</strong> if the hours need fixing.</li>
+  <li>Click <strong>Reject</strong> if the time should not count.</li>
+</ol>
+<h2>6. Check History</h2>
+<p>Open <strong>Activity Logs</strong> to see what was created, approved, rejected, or adjusted.</p>
+    <div class="footer">PSYZYGY Psychological Center Inc. user manual. Keep this guide near you while learning the system.</div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>OJT Student User Manual</title>
+  <style>
+    @page { size: A4; margin: 16mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: #2c2520;
+      background: #f7f4f0;
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.55;
+    }
+    .page {
+      background: white;
+      border: 1px solid #e6ded6;
+      border-radius: 10px;
+      padding: 28px;
+      min-height: calc(297mm - 32mm);
+    }
+    h1 {
+      margin: 0;
+      color: #4d3327;
+      font-size: 30px;
+      line-height: 1.15;
+    }
+    h2 {
+      margin: 24px 0 8px;
+      color: #4d3327;
+      font-size: 19px;
+      page-break-after: avoid;
+    }
+    h3 {
+      margin: 18px 0 6px;
+      color: #4d3327;
+      font-size: 15px;
+    }
+    p { margin: 6px 0 10px; }
+    .subtitle { color: #6f6259; font-size: 14px; margin-top: 8px; }
+    .audience {
+      display: inline-block;
+      margin-top: 14px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      color: #6b3f2f;
+      background: #f3e8df;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .screenshot {
+      margin: 22px 0;
+      border: 1px solid #ded4ca;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f7f4f0;
+      page-break-inside: avoid;
+    }
+    .screenshot img { display: block; width: 100%; }
+    .caption { padding: 9px 12px; color: #6f6259; font-size: 12px; }
+    ol { padding-left: 22px; }
+    li { margin: 8px 0; }
+    .box {
+      margin: 14px 0;
+      padding: 12px 14px;
+      border-left: 4px solid #7d4c3b;
+      background: #fbf7f3;
+      border-radius: 6px;
+      page-break-inside: avoid;
+    }
+    .simple {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 14px 0;
+    }
+    .tile {
+      padding: 12px;
+      border-radius: 8px;
+      background: #f7f4f0;
+      border: 1px solid #e6ded6;
+      font-size: 13px;
+    }
+    .footer {
+      margin-top: 24px;
+      padding-top: 12px;
+      border-top: 1px solid #e6ded6;
+      color: #8a7d73;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>OJT Student User Manual</h1>
+    <p class="subtitle">A simple guide for students who need to time in, time out, and check hours.</p>
+    <span class="audience">For OJT students</span>
+    <div class="screenshot">
+      <img src="screenshots/ojt-student-login.png" alt="OJT Student User Manual screenshot" />
+      <div class="caption">Actual screenshot from the website.</div>
+    </div>
+    
+<div class="box"><strong>Big idea:</strong> The OJT portal is your time card. You use it to time in, time out, and check your approved hours.</div>
+<h2>1. How to Login</h2>
+<ol>
+  <li>Open <strong>/ojt</strong>.</li>
+  <li>Type your registered OJT email.</li>
+  <li>Choose your date of birth.</li>
+  <li>Click <strong>Login</strong>.</li>
+</ol>
+<h2>2. Time In</h2>
+<ol>
+  <li>Login first.</li>
+  <li>Click <strong>Time In</strong> when you start OJT for the day.</li>
+  <li>Do not click it many times. One open time log is enough.</li>
+</ol>
+<h2>3. Time Out</h2>
+<ol>
+  <li>When you finish, write your notes for the day.</li>
+  <li>Click <strong>Time Out</strong>.</li>
+  <li>Your time will be sent to admin for approval.</li>
+</ol>
+<h2>4. Understand Your Hours</h2>
+<div class="simple">
+  <div class="tile"><strong>Pending</strong><br />Waiting for admin to check.</div>
+  <div class="tile"><strong>Approved</strong><br />Counts in your rendered hours.</div>
+  <div class="tile"><strong>Rejected</strong><br />Does not count.</div>
+</div>
+<h2>5. If Something Looks Wrong</h2>
+<ol>
+  <li>Do not panic.</li>
+  <li>Tell your clinic admin or supervisor.</li>
+  <li>Give the date and what happened.</li>
+</ol>
+    <div class="footer">PSYZYGY Psychological Center Inc. user manual. Keep this guide near you while learning the system.</div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,142 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>OJT Coordinator User Manual</title>
+  <style>
+    @page { size: A4; margin: 16mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: #2c2520;
+      background: #f7f4f0;
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.55;
+    }
+    .page {
+      background: white;
+      border: 1px solid #e6ded6;
+      border-radius: 10px;
+      padding: 28px;
+      min-height: calc(297mm - 32mm);
+    }
+    h1 {
+      margin: 0;
+      color: #4d3327;
+      font-size: 30px;
+      line-height: 1.15;
+    }
+    h2 {
+      margin: 24px 0 8px;
+      color: #4d3327;
+      font-size: 19px;
+      page-break-after: avoid;
+    }
+    h3 {
+      margin: 18px 0 6px;
+      color: #4d3327;
+      font-size: 15px;
+    }
+    p { margin: 6px 0 10px; }
+    .subtitle { color: #6f6259; font-size: 14px; margin-top: 8px; }
+    .audience {
+      display: inline-block;
+      margin-top: 14px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      color: #6b3f2f;
+      background: #f3e8df;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .screenshot {
+      margin: 22px 0;
+      border: 1px solid #ded4ca;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f7f4f0;
+      page-break-inside: avoid;
+    }
+    .screenshot img { display: block; width: 100%; }
+    .caption { padding: 9px 12px; color: #6f6259; font-size: 12px; }
+    ol { padding-left: 22px; }
+    li { margin: 8px 0; }
+    .box {
+      margin: 14px 0;
+      padding: 12px 14px;
+      border-left: 4px solid #7d4c3b;
+      background: #fbf7f3;
+      border-radius: 6px;
+      page-break-inside: avoid;
+    }
+    .simple {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 14px 0;
+    }
+    .tile {
+      padding: 12px;
+      border-radius: 8px;
+      background: #f7f4f0;
+      border: 1px solid #e6ded6;
+      font-size: 13px;
+    }
+    .footer {
+      margin-top: 24px;
+      padding-top: 12px;
+      border-top: 1px solid #e6ded6;
+      color: #8a7d73;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>OJT Coordinator User Manual</h1>
+    <p class="subtitle">A simple guide for school coordinators who need to check student OJT status.</p>
+    <span class="audience">For school coordinators</span>
+    <div class="screenshot">
+      <img src="screenshots/ojt-coordinator-login.png" alt="OJT Coordinator User Manual screenshot" />
+      <div class="caption">Actual screenshot from the website.</div>
+    </div>
+    
+<div class="box"><strong>Big idea:</strong> The coordinator portal lets a school coordinator check only their own students.</div>
+<h2>1. What You Need</h2>
+<ol>
+  <li>Your coordinator email.</li>
+  <li>Your access code from the clinic admin.</li>
+  <li>The page link: <strong>/ojtcoordinator</strong>.</li>
+</ol>
+<h2>2. How to Login</h2>
+<ol>
+  <li>Open <strong>/ojtcoordinator</strong>.</li>
+  <li>Type your coordinator email.</li>
+  <li>Type your access code.</li>
+  <li>Click <strong>Login</strong>.</li>
+</ol>
+<h2>3. What You Can See</h2>
+<div class="simple">
+  <div class="tile"><strong>Students</strong><br />How many OJT students are linked to your school.</div>
+  <div class="tile"><strong>Rendered Hours</strong><br />Hours already approved by the clinic.</div>
+  <div class="tile"><strong>Pending Logs</strong><br />Logs waiting for clinic review.</div>
+</div>
+<h2>4. Find a Student</h2>
+<ol>
+  <li>Use the search box.</li>
+  <li>Type the student's name, course, email, or status.</li>
+  <li>The list will show matching students.</li>
+</ol>
+<h2>5. Read the Student Status</h2>
+<ol>
+  <li><strong>Active</strong> means the student is still doing OJT.</li>
+  <li><strong>Completed</strong> means the student has finished.</li>
+  <li><strong>Withdrawn</strong> means the student stopped.</li>
+</ol>
+<div class="box"><strong>Remember:</strong> Coordinators can view status only. If something is wrong, contact the clinic admin.</div>
+    <div class="footer">PSYZYGY Psychological Center Inc. user manual. Keep this guide near you while learning the system.</div>
+  </div>
+</body>
+</html>
