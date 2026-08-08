@@ -33,6 +33,7 @@ import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 
 type AdminRole = 'super_admin' | 'clinic_admin' | 'staff';
 type TabKey = 'overview' | 'analytics' | 'events' | 'ojt' | 'certificates' | 'clinics' | 'users';
+type OjtSectionTab = 'manage' | 'time_logs' | 'activity';
 type OjtStatus = 'active' | 'completed' | 'withdrawn';
 type AdminNoticeType = 'success' | 'warning' | 'error';
 
@@ -179,6 +180,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: LucideIcon; superOnly?: bo
 
 const emptyClinic = { id: '', name: '', slug: '', address: '', phone: '', email: '' };
 const emptyProfile: Profile = { id: '', email: '', full_name: '', role: 'clinic_admin', clinic_id: '', is_active: true };
+const ojtPageSize = 10;
 const emptyManualTimeLogForm = {
   traineeId: '',
   logDate: new Date().toISOString().slice(0, 10),
@@ -388,6 +390,8 @@ export function AdminApp() {
   const [reviewingTimeLogId, setReviewingTimeLogId] = useState<string | null>(null);
   const [manualTimeLog, setManualTimeLog] = useState(emptyManualTimeLogForm);
   const [isAddingManualTimeLog, setIsAddingManualTimeLog] = useState(false);
+  const [ojtSectionTab, setOjtSectionTab] = useState<OjtSectionTab>('manage');
+  const [ojtPage, setOjtPage] = useState(1);
   const [isImportingOjt, setIsImportingOjt] = useState(false);
   const [ojtSearch, setOjtSearch] = useState('');
   const [ojtStatusFilter, setOjtStatusFilter] = useState<'all' | OjtStatus>('all');
@@ -484,6 +488,12 @@ export function AdminApp() {
     () => ojtTimeLogAuditLogs.filter((log) => visibleTraineeIds.has(log.trainee_id)).slice(0, 8),
     [ojtTimeLogAuditLogs, visibleTraineeIds],
   );
+  const ojtPageCount = Math.max(1, Math.ceil(filteredTrainees.length / ojtPageSize));
+  const paginatedTrainees = useMemo(() => {
+    const safePage = Math.min(ojtPage, ojtPageCount);
+    const startIndex = (safePage - 1) * ojtPageSize;
+    return filteredTrainees.slice(startIndex, startIndex + ojtPageSize);
+  }, [filteredTrainees, ojtPage, ojtPageCount]);
   const completedTrainees = visibleTrainees.filter((trainee) => trainee.status === 'completed');
 
   const notify = (message: string, type: AdminNoticeType = 'warning') => {
@@ -542,6 +552,14 @@ export function AdminApp() {
 
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    setOjtPage(1);
+  }, [ojtSearch, ojtStatusFilter, selectedClinicId, profile?.clinic_id]);
+
+  useEffect(() => {
+    setOjtPage((current) => Math.min(current, ojtPageCount));
+  }, [ojtPageCount]);
 
   const loadAdminData = async (user = authUser) => {
     if (!supabase || !user) {
@@ -1919,120 +1937,146 @@ export function AdminApp() {
 
           {activeTab === 'ojt' && (
             <Panel title="OJT Management" subtitle="Clinic users only see and manage OJT records for their clinic.">
-              <div className="mb-6 flex flex-col gap-3 rounded-lg border border-border bg-white p-4 xl:flex-row xl:items-end xl:justify-between">
-                <div className="grid flex-1 gap-3 md:grid-cols-[1fr_180px]">
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Search OJT</span>
-                    <div className="flex h-11 items-center gap-2 rounded-lg border border-border bg-white px-3">
-                      <Search className="h-4 w-4 text-foreground/35" />
-                      <input
-                        value={ojtSearch}
-                        onChange={(event) => setOjtSearch(event.target.value)}
-                        placeholder="Name, school, course, batch"
-                        className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none"
-                      />
+              <div className="mb-6 flex flex-wrap gap-2 rounded-lg border border-border bg-white p-2">
+                <OjtSectionTabButton active={ojtSectionTab === 'manage'} label="Manage OJT" count={filteredTrainees.length} onClick={() => setOjtSectionTab('manage')} />
+                <OjtSectionTabButton active={ojtSectionTab === 'time_logs'} label="Time Logs Review" count={filteredReviewableTimeLogs.length} onClick={() => setOjtSectionTab('time_logs')} />
+                <OjtSectionTabButton active={ojtSectionTab === 'activity'} label="Activity Logs" count={recentOjtAuditLogs.length} onClick={() => setOjtSectionTab('activity')} />
+              </div>
+
+              {ojtSectionTab === 'manage' && (
+                <>
+                  <div className="mb-6 flex flex-col gap-3 rounded-lg border border-border bg-white p-4 xl:flex-row xl:items-end xl:justify-between">
+                    <div className="grid flex-1 gap-3 md:grid-cols-[1fr_180px]">
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Search OJT</span>
+                        <div className="flex h-11 items-center gap-2 rounded-lg border border-border bg-white px-3">
+                          <Search className="h-4 w-4 text-foreground/35" />
+                          <input
+                            value={ojtSearch}
+                            onChange={(event) => setOjtSearch(event.target.value)}
+                            placeholder="Name, school, course, batch"
+                            className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none"
+                          />
+                        </div>
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Status</span>
+                        <select value={ojtStatusFilter} onChange={(event) => setOjtStatusFilter(event.target.value as 'all' | OjtStatus)} className="h-11 w-full rounded-lg border border-border bg-white px-3 text-sm">
+                          <option value="all">All status</option>
+                          <option value="active">Active</option>
+                          <option value="completed">Completed</option>
+                          <option value="withdrawn">Withdrawn</option>
+                        </select>
+                      </label>
                     </div>
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Status</span>
-                    <select value={ojtStatusFilter} onChange={(event) => setOjtStatusFilter(event.target.value as 'all' | OjtStatus)} className="h-11 w-full rounded-lg border border-border bg-white px-3 text-sm">
-                      <option value="all">All status</option>
-                      <option value="active">Active</option>
-                      <option value="completed">Completed</option>
-                      <option value="withdrawn">Withdrawn</option>
-                    </select>
-                  </label>
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <button type="button" onClick={() => setIsAddTraineeOpen(true)} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
-                    <Plus className="h-4 w-4" /> Add
-                  </button>
-                  <button type="button" onClick={exportOjtTrainees} disabled={filteredTrainees.length === 0} className="flex h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/70 disabled:cursor-not-allowed disabled:opacity-40">
-                    <Download className="h-4 w-4" /> Export
-                  </button>
-                </div>
-              </div>
-              <div className="mb-6 flex flex-col gap-3 rounded-lg border border-border bg-white p-4 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Batch import OJT trainees</p>
-                  <p className="mt-1 text-xs text-foreground/55">Use the CSV template, add photo filenames, then choose the matching image files before import.</p>
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <button type="button" onClick={downloadOjtTemplate} className="flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/70">
-                    <Download className="h-4 w-4" /> Template
-                  </button>
-                  <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-primary/35 px-4 text-sm font-semibold text-foreground/70">
-                    <Upload className="h-4 w-4 text-primary" />
-                    <span className="max-w-48 truncate">{ojtBatchFile ? ojtBatchFile.name : 'Choose CSV'}</span>
-                    <input
-                      type="file"
-                      accept=".csv,text/csv"
-                      className="sr-only"
-                      onChange={(event) => {
-                        setOjtBatchFile(event.target.files?.[0] ?? null);
-                        event.currentTarget.value = '';
-                      }}
-                    />
-                  </label>
-                  <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-primary/35 px-4 text-sm font-semibold text-foreground/70">
-                    <ImagePlus className="h-4 w-4 text-primary" />
-                    <span className="max-w-48 truncate">{ojtBatchPhotoFiles.length ? `${ojtBatchPhotoFiles.length} photo(s)` : 'Choose photos'}</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="sr-only"
-                      onChange={(event) => {
-                        setOjtBatchPhotoFiles(Array.from(event.target.files ?? []));
-                        event.currentTarget.value = '';
-                      }}
-                    />
-                  </label>
-                  <button type="button" onClick={uploadOjtBatch} disabled={!ojtBatchFile || isImportingOjt} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
-                    <Upload className="h-4 w-4" /> {isImportingOjt ? 'Importing...' : 'Import'}
-                  </button>
-                </div>
-              </div>
-              <ManualTimeLogPanel
-                trainees={visibleTrainees}
-                form={manualTimeLog}
-                setForm={setManualTimeLog}
-                onSave={addManualOjtTimeLog}
-                isSaving={isAddingManualTimeLog}
-              />
-              <TimeLogReviewPanel
-                logs={filteredReviewableTimeLogs}
-                totalCount={reviewableTimeLogs.length}
-                trainees={visibleTrainees}
-                statusFilter={timeLogStatusFilter}
-                setStatusFilter={setTimeLogStatusFilter}
-                search={timeLogSearch}
-                setSearch={setTimeLogSearch}
-                dateFrom={timeLogDateFrom}
-                setDateFrom={setTimeLogDateFrom}
-                dateTo={timeLogDateTo}
-                setDateTo={setTimeLogDateTo}
-                onExport={exportOjtTimeLogs}
-                reviewingLogId={reviewingTimeLogId}
-                onApproveLog={(log) => reviewTimeLog(log, 'approved')}
-                onRejectLog={(log) => reviewTimeLog(log, 'rejected')}
-                onAdjustLog={adjustTimeLog}
-              />
-              <OjtAuditLogPanel logs={recentOjtAuditLogs} trainees={visibleTrainees} />
-              <TraineeTable
-                trainees={filteredTrainees}
-                clinics={clinics}
-                loggedHoursByTrainee={loggedHoursByTrainee}
-                onView={setSelectedTrainee}
-                onEdit={(trainee) => {
-                  setEditingTrainee(trainee);
-                  setEditingTraineePhotoFile(null);
-                }}
-                onDelete={deleteTrainee}
-                deletingId={deletingTraineeId}
-                onComplete={markCompleted}
-                onCertificate={(trainee) => generateCertificates([trainee])}
-              />
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <button type="button" onClick={() => setIsAddTraineeOpen(true)} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white">
+                        <Plus className="h-4 w-4" /> Add
+                      </button>
+                      <button type="button" onClick={exportOjtTrainees} disabled={filteredTrainees.length === 0} className="flex h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/70 disabled:cursor-not-allowed disabled:opacity-40">
+                        <Download className="h-4 w-4" /> Export
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mb-6 flex flex-col gap-3 rounded-lg border border-border bg-white p-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Batch import OJT trainees</p>
+                      <p className="mt-1 text-xs text-foreground/55">Use the CSV template, add photo filenames, then choose the matching image files before import.</p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <button type="button" onClick={downloadOjtTemplate} className="flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/70">
+                        <Download className="h-4 w-4" /> Template
+                      </button>
+                      <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-primary/35 px-4 text-sm font-semibold text-foreground/70">
+                        <Upload className="h-4 w-4 text-primary" />
+                        <span className="max-w-48 truncate">{ojtBatchFile ? ojtBatchFile.name : 'Choose CSV'}</span>
+                        <input
+                          type="file"
+                          accept=".csv,text/csv"
+                          className="sr-only"
+                          onChange={(event) => {
+                            setOjtBatchFile(event.target.files?.[0] ?? null);
+                            event.currentTarget.value = '';
+                          }}
+                        />
+                      </label>
+                      <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-primary/35 px-4 text-sm font-semibold text-foreground/70">
+                        <ImagePlus className="h-4 w-4 text-primary" />
+                        <span className="max-w-48 truncate">{ojtBatchPhotoFiles.length ? `${ojtBatchPhotoFiles.length} photo(s)` : 'Choose photos'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="sr-only"
+                          onChange={(event) => {
+                            setOjtBatchPhotoFiles(Array.from(event.target.files ?? []));
+                            event.currentTarget.value = '';
+                          }}
+                        />
+                      </label>
+                      <button type="button" onClick={uploadOjtBatch} disabled={!ojtBatchFile || isImportingOjt} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
+                        <Upload className="h-4 w-4" /> {isImportingOjt ? 'Importing...' : 'Import'}
+                      </button>
+                    </div>
+                  </div>
+                  <TraineeTable
+                    trainees={paginatedTrainees}
+                    clinics={clinics}
+                    loggedHoursByTrainee={loggedHoursByTrainee}
+                    onView={setSelectedTrainee}
+                    onEdit={(trainee) => {
+                      setEditingTrainee(trainee);
+                      setEditingTraineePhotoFile(null);
+                    }}
+                    onDelete={deleteTrainee}
+                    deletingId={deletingTraineeId}
+                    onComplete={markCompleted}
+                    onCertificate={(trainee) => generateCertificates([trainee])}
+                  />
+                  <PaginationControls
+                    page={Math.min(ojtPage, ojtPageCount)}
+                    pageCount={ojtPageCount}
+                    totalCount={filteredTrainees.length}
+                    pageSize={ojtPageSize}
+                    onPageChange={setOjtPage}
+                  />
+                </>
+              )}
+
+              {ojtSectionTab === 'time_logs' && (
+                <>
+                  <ManualTimeLogPanel
+                    trainees={visibleTrainees}
+                    form={manualTimeLog}
+                    setForm={setManualTimeLog}
+                    onSave={addManualOjtTimeLog}
+                    isSaving={isAddingManualTimeLog}
+                  />
+                  <TimeLogReviewPanel
+                    logs={filteredReviewableTimeLogs}
+                    totalCount={reviewableTimeLogs.length}
+                    trainees={visibleTrainees}
+                    statusFilter={timeLogStatusFilter}
+                    setStatusFilter={setTimeLogStatusFilter}
+                    search={timeLogSearch}
+                    setSearch={setTimeLogSearch}
+                    dateFrom={timeLogDateFrom}
+                    setDateFrom={setTimeLogDateFrom}
+                    dateTo={timeLogDateTo}
+                    setDateTo={setTimeLogDateTo}
+                    onExport={exportOjtTimeLogs}
+                    reviewingLogId={reviewingTimeLogId}
+                    onApproveLog={(log) => reviewTimeLog(log, 'approved')}
+                    onRejectLog={(log) => reviewTimeLog(log, 'rejected')}
+                    onAdjustLog={adjustTimeLog}
+                  />
+                </>
+              )}
+
+              {ojtSectionTab === 'activity' && (
+                <OjtAuditLogPanel logs={recentOjtAuditLogs} trainees={visibleTrainees} />
+              )}
+
               {isAddTraineeOpen && (
                 <OjtAddDialog
                   trainee={newTrainee}
@@ -2715,6 +2759,65 @@ function OjtAddDialog({
             <Plus className="h-4 w-4" /> {isSaving ? 'Adding...' : 'Add OJT'}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function OjtSectionTabButton({ active, label, count, onClick }: { active: boolean; label: string; count: number; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-semibold transition ${
+        active ? 'bg-primary text-white shadow-sm' : 'bg-transparent text-foreground/60 hover:bg-secondary hover:text-foreground'
+      }`}
+    >
+      <span>{label}</span>
+      <span className={`rounded-full px-2 py-0.5 text-xs ${active ? 'bg-white/20 text-white' : 'bg-secondary text-foreground/50'}`}>{count}</span>
+    </button>
+  );
+}
+
+function PaginationControls({
+  page,
+  pageCount,
+  totalCount,
+  pageSize,
+  onPageChange,
+}: {
+  page: number;
+  pageCount: number;
+  totalCount: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}) {
+  const start = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(totalCount, page * pageSize);
+
+  return (
+    <div className="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm text-foreground/55">
+        Showing <span className="font-semibold text-foreground">{start}-{end}</span> of <span className="font-semibold text-foreground">{totalCount}</span> OJT record(s)
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+          disabled={page <= 1}
+          className="h-9 rounded-lg border border-border px-3 text-sm font-semibold text-foreground/65 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Previous
+        </button>
+        <span className="min-w-20 text-center text-sm font-semibold text-foreground/60">Page {page} of {pageCount}</span>
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.min(pageCount, page + 1))}
+          disabled={page >= pageCount}
+          className="h-9 rounded-lg border border-border px-3 text-sm font-semibold text-foreground/65 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Next
+        </button>
       </div>
     </div>
   );
