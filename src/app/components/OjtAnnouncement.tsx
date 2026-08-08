@@ -1,4 +1,5 @@
 import { GraduationCap, MessageCircle, MonitorCheck, School } from 'lucide-react';
+import coordinatorPoster from '../../assets/ojt-coordinator-portal-poster-web.jpg';
 
 const highlights = [
   {
@@ -82,6 +83,16 @@ export function OjtAnnouncement() {
                   );
                 })}
               </div>
+            </div>
+          </div>
+          <div className="border-t border-border bg-white p-4 sm:p-6 lg:p-8">
+            <div className="overflow-hidden rounded-xl border border-border bg-[#f7f4f0] shadow-sm">
+              <img
+                src={coordinatorPoster}
+                alt="PSYZYGY OJT Coordinator Portal marketing poster showing coordinator monitoring tools on laptop, tablet, and phone"
+                className="block w-full object-cover"
+                loading="lazy"
+              />
             </div>
           </div>
         </div>
