@@ -33,7 +33,7 @@ import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 
 type AdminRole = 'super_admin' | 'clinic_admin' | 'staff';
 type TabKey = 'overview' | 'analytics' | 'events' | 'ojt' | 'certificates' | 'clinics' | 'users';
-type OjtSectionTab = 'manage' | 'time_logs' | 'activity';
+type OjtSectionTab = 'manage' | 'schools' | 'time_logs' | 'activity';
 type OjtStatus = 'active' | 'completed' | 'withdrawn';
 type AdminNoticeType = 'success' | 'warning' | 'error';
 
@@ -58,6 +58,7 @@ type Profile = {
 type Trainee = {
   id: string;
   fullName: string;
+  schoolId: string;
   schoolName: string;
   course: string;
   dateOfBirth: string;
@@ -75,6 +76,7 @@ type Trainee = {
 type TraineeRow = {
   id: string;
   clinic_id: string;
+  school_id: string | null;
   full_name: string;
   school_name: string | null;
   course: string | null;
@@ -87,6 +89,17 @@ type TraineeRow = {
   notes: string | null;
   photo_public_url: string | null;
   photo_storage_path: string | null;
+};
+
+type OjtSchool = {
+  id: string;
+  clinic_id: string;
+  name: string;
+  coordinator_name: string | null;
+  coordinator_email: string | null;
+  coordinator_phone: string | null;
+  address: string | null;
+  notes: string | null;
 };
 
 type OjtTimeLog = {
@@ -120,6 +133,7 @@ type OjtImportRow = {
   photoFileName: string;
   payload: {
     clinic_id: string;
+    school_id: string | null;
     full_name: string;
     school_name: string | null;
     course: string | null;
@@ -180,6 +194,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: LucideIcon; superOnly?: bo
 
 const emptyClinic = { id: '', name: '', slug: '', address: '', phone: '', email: '' };
 const emptyProfile: Profile = { id: '', email: '', full_name: '', role: 'clinic_admin', clinic_id: '', is_active: true };
+const emptySchoolForm = { id: '', clinic_id: '', name: '', coordinator_name: '', coordinator_email: '', coordinator_phone: '', address: '', notes: '' };
 const ojtPageSize = 10;
 const emptyManualTimeLogForm = {
   traineeId: '',
@@ -198,6 +213,7 @@ const ojtTemplateRows = [
 function mapTraineeRow(row: TraineeRow): Trainee {
   return {
     id: row.id,
+    schoolId: row.school_id ?? '',
     fullName: row.full_name,
     schoolName: row.school_name ?? '',
     course: row.course ?? '',
@@ -377,6 +393,7 @@ export function AdminApp() {
   const [eventFiles, setEventFiles] = useState<File[]>([]);
 
   const [trainees, setTrainees] = useState<Trainee[]>([]);
+  const [ojtSchools, setOjtSchools] = useState<OjtSchool[]>([]);
   const [ojtTimeLogs, setOjtTimeLogs] = useState<OjtTimeLog[]>([]);
   const [ojtTimeLogAuditLogs, setOjtTimeLogAuditLogs] = useState<OjtTimeLogAuditLog[]>([]);
   const [traineePhotoFile, setTraineePhotoFile] = useState<File | null>(null);
@@ -392,6 +409,11 @@ export function AdminApp() {
   const [isAddingManualTimeLog, setIsAddingManualTimeLog] = useState(false);
   const [ojtSectionTab, setOjtSectionTab] = useState<OjtSectionTab>('manage');
   const [ojtPage, setOjtPage] = useState(1);
+  const [schoolSearch, setSchoolSearch] = useState('');
+  const [schoolForm, setSchoolForm] = useState(emptySchoolForm);
+  const [editingSchoolId, setEditingSchoolId] = useState<string | null>(null);
+  const [isSavingSchool, setIsSavingSchool] = useState(false);
+  const [deletingSchoolId, setDeletingSchoolId] = useState<string | null>(null);
   const [isImportingOjt, setIsImportingOjt] = useState(false);
   const [ojtSearch, setOjtSearch] = useState('');
   const [ojtStatusFilter, setOjtStatusFilter] = useState<'all' | OjtStatus>('all');
@@ -409,6 +431,7 @@ export function AdminApp() {
   const [selectedDuplicateRows, setSelectedDuplicateRows] = useState<number[]>([]);
   const [newTrainee, setNewTrainee] = useState({
     fullName: '',
+    schoolId: '',
     schoolName: '',
     course: '',
     dateOfBirth: '',
@@ -442,6 +465,24 @@ export function AdminApp() {
       return matchesStatus && matchesSearch;
     });
   }, [clinics, ojtSearch, ojtStatusFilter, visibleTrainees]);
+  const visibleSchools = useMemo(
+    () => ojtSchools.filter((school) => isSuperAdmin || school.clinic_id === profile?.clinic_id),
+    [isSuperAdmin, ojtSchools, profile?.clinic_id],
+  );
+  const filteredSchools = useMemo(() => {
+    const query = normalizeRecordKey(schoolSearch);
+    return visibleSchools.filter((school) => {
+      if (!query) return true;
+      return normalizeRecordKey([
+        school.name,
+        school.coordinator_name ?? '',
+        school.coordinator_email ?? '',
+        school.coordinator_phone ?? '',
+        school.address ?? '',
+      ].join(' ')).includes(query);
+    });
+  }, [schoolSearch, visibleSchools]);
+  const schoolById = useMemo(() => new Map(ojtSchools.map((school) => [school.id, school])), [ojtSchools]);
   const loggedHoursByTrainee = useMemo(() => {
     const totals = new Map<string, number>();
     ojtTimeLogs.forEach((log) => {
@@ -611,7 +652,7 @@ export function AdminApp() {
 
     const { data: traineeRows, error: traineesError } = await supabase
       .from('ojt_trainees')
-      .select('id, clinic_id, full_name, school_name, course, date_of_birth, email, total_hours, start_date, end_date, status, notes, photo_public_url, photo_storage_path')
+      .select('id, clinic_id, school_id, full_name, school_name, course, date_of_birth, email, total_hours, start_date, end_date, status, notes, photo_public_url, photo_storage_path')
       .order('created_at', { ascending: false });
 
     if (traineesError) {
@@ -619,6 +660,17 @@ export function AdminApp() {
     }
 
     setTrainees(((traineeRows ?? []) as TraineeRow[]).map(mapTraineeRow));
+
+    const { data: schoolRows, error: schoolsError } = await supabase
+      .from('ojt_schools')
+      .select('id, clinic_id, name, coordinator_name, coordinator_email, coordinator_phone, address, notes')
+      .order('name');
+
+    if (schoolsError) {
+      setNotice(schoolsError.message);
+    }
+
+    setOjtSchools((schoolRows ?? []) as OjtSchool[]);
 
     const { data: timeLogRows, error: timeLogsError } = await supabase
       .from('ojt_time_logs')
@@ -1028,6 +1080,112 @@ export function AdminApp() {
     }
   };
 
+  const saveSchool = async () => {
+    if (!supabase || isSavingSchool) {
+      return;
+    }
+
+    const clinicId = isSuperAdmin ? (schoolForm.clinic_id || activeClinicId) : profile?.clinic_id ?? '';
+    const schoolName = schoolForm.name.trim();
+    if (!clinicId || !schoolName) {
+      notify('School name is required.', 'warning');
+      return;
+    }
+
+    if (schoolForm.coordinator_email && !isValidEmail(schoolForm.coordinator_email)) {
+      notify('Enter a valid school coordinator email address.', 'warning');
+      return;
+    }
+
+    const duplicate = visibleSchools.find((school) => (
+      school.id !== editingSchoolId &&
+      school.clinic_id === clinicId &&
+      normalizeRecordKey(school.name) === normalizeRecordKey(schoolName)
+    ));
+    if (duplicate) {
+      notify(`${schoolName} already exists for this clinic.`, 'warning');
+      return;
+    }
+
+    clearNotice();
+    setIsSavingSchool(true);
+    try {
+      const payload = {
+        clinic_id: clinicId,
+        name: schoolName,
+        coordinator_name: schoolForm.coordinator_name.trim() || null,
+        coordinator_email: schoolForm.coordinator_email.trim() || null,
+        coordinator_phone: schoolForm.coordinator_phone.trim() || null,
+        address: schoolForm.address.trim() || null,
+        notes: schoolForm.notes.trim() || null,
+      };
+
+      const query = editingSchoolId
+        ? supabase.from('ojt_schools').update(payload).eq('id', editingSchoolId)
+        : supabase.from('ojt_schools').insert({ ...payload, created_by: authUser?.id });
+
+      const { error } = await query;
+      if (error) {
+        notify(error.message, 'error');
+        return;
+      }
+
+      if (editingSchoolId) {
+        await supabase
+          .from('ojt_trainees')
+          .update({ school_name: schoolName })
+          .eq('school_id', editingSchoolId);
+      }
+
+      setSchoolForm(emptySchoolForm);
+      setEditingSchoolId(null);
+      notify(`School ${editingSchoolId ? 'updated' : 'added'}.`, 'success');
+      await loadAdminData();
+    } finally {
+      setIsSavingSchool(false);
+    }
+  };
+
+  const editSchool = (school: OjtSchool) => {
+    setEditingSchoolId(school.id);
+    setSchoolForm({
+      id: school.id,
+      clinic_id: school.clinic_id,
+      name: school.name,
+      coordinator_name: school.coordinator_name ?? '',
+      coordinator_email: school.coordinator_email ?? '',
+      coordinator_phone: school.coordinator_phone ?? '',
+      address: school.address ?? '',
+      notes: school.notes ?? '',
+    });
+    setOjtSectionTab('schools');
+  };
+
+  const deleteSchool = async (school: OjtSchool) => {
+    if (!supabase || deletingSchoolId || !window.confirm(`Delete school record for ${school.name}? OJT trainees linked to this school will keep their school name but lose the school selection link.`)) {
+      return;
+    }
+
+    setDeletingSchoolId(school.id);
+    try {
+      const { error } = await supabase.from('ojt_schools').delete().eq('id', school.id);
+      if (error) {
+        notify(error.message, 'error');
+        return;
+      }
+
+      if (editingSchoolId === school.id) {
+        setEditingSchoolId(null);
+        setSchoolForm(emptySchoolForm);
+      }
+
+      notify(`${school.name} was deleted.`, 'success');
+      await loadAdminData();
+    } finally {
+      setDeletingSchoolId(null);
+    }
+  };
+
   const addTrainee = async () => {
     if (!supabase || isSavingTrainee) {
       return;
@@ -1053,6 +1211,12 @@ export function AdminApp() {
       return;
     }
 
+    const selectedSchool = visibleSchools.find((school) => school.id === newTrainee.schoolId && school.clinic_id === activeClinicId);
+    if (!selectedSchool) {
+      notify('Select a managed school for this OJT trainee.', 'warning');
+      return;
+    }
+
     clearNotice();
     setIsSavingTrainee(true);
     try {
@@ -1060,8 +1224,9 @@ export function AdminApp() {
         .from('ojt_trainees')
         .insert({
           clinic_id: activeClinicId,
+          school_id: selectedSchool.id,
           full_name: fullName,
-          school_name: newTrainee.schoolName.trim() || null,
+          school_name: selectedSchool.name,
           course: newTrainee.course.trim() || null,
           date_of_birth: newTrainee.dateOfBirth || null,
           email: newTrainee.email.trim() || null,
@@ -1072,7 +1237,7 @@ export function AdminApp() {
           notes: newTrainee.batchName.trim() || null,
           created_by: authUser?.id,
         })
-        .select('id, clinic_id, full_name, school_name, course, date_of_birth, email, total_hours, start_date, end_date, status, notes, photo_public_url, photo_storage_path')
+        .select('id, clinic_id, school_id, full_name, school_name, course, date_of_birth, email, total_hours, start_date, end_date, status, notes, photo_public_url, photo_storage_path')
         .single();
 
       if (traineeError || !traineeRow) {
@@ -1105,7 +1270,7 @@ export function AdminApp() {
         }
       }
 
-      setNewTrainee({ fullName: '', schoolName: '', course: '', dateOfBirth: '', email: '', totalHours: '300', startDate: '', endDate: '', batchName: '' });
+      setNewTrainee({ fullName: '', schoolId: '', schoolName: '', course: '', dateOfBirth: '', email: '', totalHours: '300', startDate: '', endDate: '', batchName: '' });
       setTraineePhotoFile(null);
       setIsAddTraineeOpen(false);
       notify(`${fullName} was added successfully.`, 'success');
@@ -1383,6 +1548,11 @@ export function AdminApp() {
       const startDate = row[headerIndex.start_date]?.trim() ?? '';
       const endDate = row[headerIndex.end_date]?.trim() ?? '';
       const photoFileName = row[headerIndex.photo_file]?.trim() ?? '';
+      const schoolName = row[headerIndex.school_name]?.trim() ?? '';
+      const matchedSchool = visibleSchools.find((school) => (
+        school.clinic_id === activeClinicId &&
+        normalizeRecordKey(school.name) === normalizeRecordKey(schoolName)
+      ));
       const totalHours = Number(totalHoursValue);
       const normalizedDateOfBirth = normalizeCsvDate(dateOfBirth);
       const normalizedStartDate = normalizeCsvDate(startDate);
@@ -1422,8 +1592,9 @@ export function AdminApp() {
         photoFileName,
         payload: {
           clinic_id: activeClinicId,
+          school_id: matchedSchool?.id ?? null,
           full_name: fullName,
-          school_name: row[headerIndex.school_name]?.trim() || null,
+          school_name: matchedSchool?.name ?? (schoolName || null),
           course: row[headerIndex.course]?.trim() || null,
           date_of_birth: normalizedDateOfBirth,
           email: email || null,
@@ -1602,11 +1773,18 @@ export function AdminApp() {
       return;
     }
 
+    const selectedSchool = visibleSchools.find((school) => school.id === editingTrainee.schoolId && school.clinic_id === editingTrainee.clinicId);
+    if (!selectedSchool) {
+      notify('Select a managed school for this OJT trainee.', 'warning');
+      return;
+    }
+
     setIsSavingEditedTrainee(true);
     try {
       const updates = {
         full_name: editingTrainee.fullName.trim(),
-        school_name: editingTrainee.schoolName.trim() || null,
+        school_id: selectedSchool.id,
+        school_name: selectedSchool.name,
         course: editingTrainee.course.trim() || null,
         date_of_birth: editingTrainee.dateOfBirth || null,
         email: editingTrainee.email.trim() || null,
@@ -1939,6 +2117,7 @@ export function AdminApp() {
             <Panel title="OJT Management" subtitle="Clinic users only see and manage OJT records for their clinic.">
               <div className="mb-6 flex flex-wrap gap-2 rounded-lg border border-border bg-white p-2">
                 <OjtSectionTabButton active={ojtSectionTab === 'manage'} label="Manage OJT" count={filteredTrainees.length} onClick={() => setOjtSectionTab('manage')} />
+                <OjtSectionTabButton active={ojtSectionTab === 'schools'} label="Schools" count={filteredSchools.length} onClick={() => setOjtSectionTab('schools')} />
                 <OjtSectionTabButton active={ojtSectionTab === 'time_logs'} label="Time Logs Review" count={filteredReviewableTimeLogs.length} onClick={() => setOjtSectionTab('time_logs')} />
                 <OjtSectionTabButton active={ojtSectionTab === 'activity'} label="Activity Logs" count={recentOjtAuditLogs.length} onClick={() => setOjtSectionTab('activity')} />
               </div>
@@ -2043,6 +2222,28 @@ export function AdminApp() {
                 </>
               )}
 
+              {ojtSectionTab === 'schools' && (
+                <SchoolManagementPanel
+                  schools={filteredSchools}
+                  clinics={clinics}
+                  isSuperAdmin={isSuperAdmin}
+                  form={schoolForm}
+                  setForm={setSchoolForm}
+                  search={schoolSearch}
+                  setSearch={setSchoolSearch}
+                  editingSchoolId={editingSchoolId}
+                  isSaving={isSavingSchool}
+                  deletingSchoolId={deletingSchoolId}
+                  onSave={saveSchool}
+                  onEdit={editSchool}
+                  onDelete={deleteSchool}
+                  onCancelEdit={() => {
+                    setEditingSchoolId(null);
+                    setSchoolForm(emptySchoolForm);
+                  }}
+                />
+              )}
+
               {ojtSectionTab === 'time_logs' && (
                 <>
                   <ManualTimeLogPanel
@@ -2081,6 +2282,7 @@ export function AdminApp() {
                 <OjtAddDialog
                   trainee={newTrainee}
                   setTrainee={setNewTrainee}
+                  schools={visibleSchools.filter((school) => school.clinic_id === activeClinicId)}
                   photoFile={traineePhotoFile}
                   setPhotoFile={setTraineePhotoFile}
                   onSave={addTrainee}
@@ -2109,6 +2311,7 @@ export function AdminApp() {
                 <OjtEditDialog
                   trainee={editingTrainee}
                   setTrainee={setEditingTrainee}
+                  schools={visibleSchools.filter((school) => school.clinic_id === editingTrainee.clinicId)}
                   photoFile={editingTraineePhotoFile}
                   setPhotoFile={setEditingTraineePhotoFile}
                   clinicName={clinics.find((clinic) => clinic.id === editingTrainee.clinicId)?.name ?? 'Clinic'}
@@ -2676,9 +2879,127 @@ function OjtDuplicateDialog({
   );
 }
 
+function SchoolManagementPanel({
+  schools,
+  clinics,
+  isSuperAdmin,
+  form,
+  setForm,
+  search,
+  setSearch,
+  editingSchoolId,
+  isSaving,
+  deletingSchoolId,
+  onSave,
+  onEdit,
+  onDelete,
+  onCancelEdit,
+}: {
+  schools: OjtSchool[];
+  clinics: Clinic[];
+  isSuperAdmin: boolean;
+  form: typeof emptySchoolForm;
+  setForm: (form: typeof emptySchoolForm) => void;
+  search: string;
+  setSearch: (value: string) => void;
+  editingSchoolId: string | null;
+  isSaving: boolean;
+  deletingSchoolId: string | null;
+  onSave: () => void;
+  onEdit: (school: OjtSchool) => void;
+  onDelete: (school: OjtSchool) => void;
+  onCancelEdit: () => void;
+}) {
+  return (
+    <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
+      <div className="rounded-lg border border-border bg-white p-4">
+        <div>
+          <p className="text-sm font-semibold text-foreground">{editingSchoolId ? 'Edit School' : 'Add School'}</p>
+          <p className="mt-1 text-xs text-foreground/55">Save school details and coordinator contact information for OJT records.</p>
+        </div>
+        <div className="mt-4 grid gap-3">
+          {isSuperAdmin && (
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Clinic</span>
+              <select value={form.clinic_id} onChange={(event) => setForm({ ...form, clinic_id: event.target.value })} className="h-11 w-full rounded-lg border border-border bg-white px-3 text-sm">
+                <option value="">Choose clinic</option>
+                {clinics.map((clinic) => (
+                  <option key={clinic.id} value={clinic.id}>{clinic.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          <Input label="School name" value={form.name} onChange={(value) => setForm({ ...form, name: value })} />
+          <Input label="Coordinator name" value={form.coordinator_name} onChange={(value) => setForm({ ...form, coordinator_name: value })} />
+          <Input label="Coordinator email" value={form.coordinator_email} onChange={(value) => setForm({ ...form, coordinator_email: value })} type="email" />
+          <Input label="Coordinator phone" value={form.coordinator_phone} onChange={(value) => setForm({ ...form, coordinator_phone: value })} />
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Address</span>
+            <textarea value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} className="min-h-20 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Notes</span>
+            <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} className="min-h-20 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary" />
+          </label>
+        </div>
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          {editingSchoolId && (
+            <button type="button" onClick={onCancelEdit} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/65">
+              Cancel
+            </button>
+          )}
+          <button type="button" onClick={onSave} disabled={isSaving} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
+            <Save className="h-4 w-4" /> {isSaving ? 'Saving...' : editingSchoolId ? 'Save School' : 'Add School'}
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-border bg-white p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <label className="block sm:max-w-md sm:flex-1">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Search schools</span>
+            <div className="flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-3">
+              <Search className="h-4 w-4 text-foreground/35" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="School, coordinator, contact" className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none" />
+            </div>
+          </label>
+          <span className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground/60">{schools.length} school(s)</span>
+        </div>
+        <div className="mt-4 grid gap-3">
+          {schools.map((school) => (
+            <div key={school.id} className="grid gap-3 rounded-lg bg-[#f7f4f0] p-4 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-foreground">{school.name}</p>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-foreground/55">{clinics.find((clinic) => clinic.id === school.clinic_id)?.name ?? 'Clinic'}</span>
+                </div>
+                <p className="mt-1 text-sm text-foreground/60">{school.coordinator_name || 'No coordinator name'}</p>
+                <p className="mt-1 text-xs text-foreground/50">{[school.coordinator_email, school.coordinator_phone].filter(Boolean).join(' · ') || 'No coordinator contact'}</p>
+                {school.address && <p className="mt-2 text-xs text-foreground/50" style={adminClampStyle(2)}>{school.address}</p>}
+              </div>
+              <div className="flex flex-wrap gap-2 lg:justify-end">
+                <button type="button" onClick={() => onEdit(school)} className="flex h-9 items-center gap-2 rounded-lg border border-border bg-white px-3 text-xs font-semibold text-foreground/65">
+                  <Pencil className="h-3.5 w-3.5" /> Edit
+                </button>
+                <button type="button" onClick={() => onDelete(school)} disabled={deletingSchoolId === school.id} className="flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-40">
+                  <Trash2 className="h-3.5 w-3.5" /> {deletingSchoolId === school.id ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          ))}
+          {schools.length === 0 && (
+            <p className="rounded-lg bg-[#f7f4f0] p-5 text-center text-sm text-foreground/45">No schools found.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OjtAddDialog({
   trainee,
   setTrainee,
+  schools,
   photoFile,
   setPhotoFile,
   onSave,
@@ -2687,6 +3008,7 @@ function OjtAddDialog({
 }: {
   trainee: {
     fullName: string;
+    schoolId: string;
     schoolName: string;
     course: string;
     dateOfBirth: string;
@@ -2698,6 +3020,7 @@ function OjtAddDialog({
   };
   setTrainee: (trainee: {
     fullName: string;
+    schoolId: string;
     schoolName: string;
     course: string;
     dateOfBirth: string;
@@ -2707,6 +3030,7 @@ function OjtAddDialog({
     endDate: string;
     batchName: string;
   }) => void;
+  schools: OjtSchool[];
   photoFile: File | null;
   setPhotoFile: (file: File | null) => void;
   onSave: () => void;
@@ -2727,7 +3051,7 @@ function OjtAddDialog({
         </div>
         <div className="grid gap-4 p-5 md:grid-cols-2">
           <Input value={trainee.fullName} onChange={(value) => setTrainee({ ...trainee, fullName: value })} label="Full name" />
-          <Input value={trainee.schoolName} onChange={(value) => setTrainee({ ...trainee, schoolName: value })} label="School" />
+          <SchoolSelect value={trainee.schoolId} schools={schools} onChange={(schoolId) => setTrainee({ ...trainee, schoolId, schoolName: schools.find((school) => school.id === schoolId)?.name ?? '' })} />
           <Input value={trainee.course} onChange={(value) => setTrainee({ ...trainee, course: value })} label="Course" />
           <Input value={trainee.dateOfBirth} onChange={(value) => setTrainee({ ...trainee, dateOfBirth: value })} label="Date of birth" type="date" />
           <Input value={trainee.email} onChange={(value) => setTrainee({ ...trainee, email: value })} label="Email" type="email" />
@@ -3061,6 +3385,7 @@ function OjtDetailsDialog({
 function OjtEditDialog({
   trainee,
   setTrainee,
+  schools,
   photoFile,
   setPhotoFile,
   clinicName,
@@ -3070,6 +3395,7 @@ function OjtEditDialog({
 }: {
   trainee: Trainee;
   setTrainee: (trainee: Trainee) => void;
+  schools: OjtSchool[];
   photoFile: File | null;
   setPhotoFile: (file: File | null) => void;
   clinicName: string;
@@ -3095,7 +3421,7 @@ function OjtEditDialog({
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">Clinic</span>
             <input value={clinicName} readOnly className="h-11 w-full rounded-lg border border-border bg-secondary px-3 text-sm text-foreground/60 outline-none" />
           </label>
-          <Input label="School" value={trainee.schoolName} onChange={(value) => setTrainee({ ...trainee, schoolName: value })} />
+          <SchoolSelect value={trainee.schoolId} schools={schools} onChange={(schoolId) => setTrainee({ ...trainee, schoolId, schoolName: schools.find((school) => school.id === schoolId)?.name ?? trainee.schoolName })} fallbackName={trainee.schoolName} />
           <Input label="Course" value={trainee.course} onChange={(value) => setTrainee({ ...trainee, course: value })} />
           <Input label="Date of birth" value={trainee.dateOfBirth} onChange={(value) => setTrainee({ ...trainee, dateOfBirth: value })} type="date" />
           <Input label="Email" value={trainee.email} onChange={(value) => setTrainee({ ...trainee, email: value })} type="email" />
@@ -3143,6 +3469,23 @@ function DetailItem({ label, value }: { label: string; value: string }) {
       <p className="text-xs font-semibold uppercase tracking-wide text-foreground/45">{label}</p>
       <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
     </div>
+  );
+}
+
+function SchoolSelect({ value, schools, onChange, fallbackName }: { value: string; schools: OjtSchool[]; onChange: (value: string) => void; fallbackName?: string }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground/45">School</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-11 w-full rounded-lg border border-border bg-white px-3 text-sm">
+        <option value="">Choose school</option>
+        {value === '' && fallbackName && (
+          <option value="" disabled>Current: {fallbackName}</option>
+        )}
+        {schools.map((school) => (
+          <option key={school.id} value={school.id}>{school.name}</option>
+        ))}
+      </select>
+    </label>
   );
 }
 
