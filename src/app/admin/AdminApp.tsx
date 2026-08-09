@@ -197,6 +197,7 @@ const emptyClinic = { id: '', name: '', slug: '', address: '', phone: '', email:
 const emptyProfile: Profile = { id: '', email: '', full_name: '', role: 'clinic_admin', clinic_id: '', is_active: true };
 const emptySchoolForm = { id: '', clinic_id: '', name: '', coordinator_name: '', coordinator_email: '', coordinator_phone: '', coordinator_access_code: '', address: '', notes: '' };
 const ojtPageSize = 10;
+const defaultAnalyticsDays = 90;
 const emptyManualTimeLogForm = {
   traineeId: '',
   logDate: new Date().toISOString().slice(0, 10),
@@ -210,6 +211,31 @@ const ojtTemplateRows = [
   ['Juan Dela Cruz', 'University of Example', 'BS Psychology', '2003-01-15', 'juan@example.com', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30', ''],
   ['Maria Santos', 'Example State College', 'AB Psychology', '2003-05-20', 'maria@example.com', 'Batch 2026-A', '300', '2026-06-01', '2026-08-30', ''],
 ];
+
+function formatDateInput(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getDefaultAnalyticsRange() {
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - defaultAnalyticsDays);
+
+  return {
+    startDate: formatDateInput(startDate),
+    endDate: formatDateInput(endDate),
+  };
+}
+
+function getAnalyticsBounds(range: { startDate: string; endDate: string }) {
+  const startDate = range.startDate ? new Date(`${range.startDate}T00:00:00`) : new Date(`${getDefaultAnalyticsRange().startDate}T00:00:00`);
+  const endDate = range.endDate ? new Date(`${range.endDate}T23:59:59.999`) : new Date(`${getDefaultAnalyticsRange().endDate}T23:59:59.999`);
+
+  return {
+    startDate,
+    endDate: endDate < startDate ? startDate : endDate,
+  };
+}
 
 function mapTraineeRow(row: TraineeRow): Trainee {
   return {
@@ -370,6 +396,7 @@ export function AdminApp() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [eventAlbums, setEventAlbums] = useState<EventAlbum[]>([]);
   const [pageVisits, setPageVisits] = useState<PageVisit[]>([]);
+  const [analyticsRange, setAnalyticsRange] = useState(getDefaultAnalyticsRange);
   const [analyticsUpdatedAt, setAnalyticsUpdatedAt] = useState<Date | null>(null);
   const [isAnalyticsRefreshing, setIsAnalyticsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
@@ -709,12 +736,12 @@ export function AdminApp() {
 
       setProfiles((profileRows ?? []) as Profile[]);
 
-      const since = new Date();
-      since.setDate(since.getDate() - 90);
+      const { startDate, endDate } = getAnalyticsBounds(analyticsRange);
       const { data: visitRows, error: visitsError } = await supabase
         .from('page_visits')
         .select('id, path, device_type, country, region, city, timezone, visited_at')
-        .gte('visited_at', since.toISOString())
+        .gte('visited_at', startDate.toISOString())
+        .lte('visited_at', endDate.toISOString())
         .order('visited_at', { ascending: false })
         .limit(5000);
 
@@ -736,12 +763,12 @@ export function AdminApp() {
 
     setIsAnalyticsRefreshing(true);
 
-    const since = new Date();
-    since.setDate(since.getDate() - 90);
+    const { startDate, endDate } = getAnalyticsBounds(analyticsRange);
     const { data: visitRows, error: visitsError } = await supabase
       .from('page_visits')
       .select('id, path, device_type, country, region, city, timezone, visited_at')
-      .gte('visited_at', since.toISOString())
+      .gte('visited_at', startDate.toISOString())
+      .lte('visited_at', endDate.toISOString())
       .order('visited_at', { ascending: false })
       .limit(5000);
 
@@ -766,7 +793,7 @@ export function AdminApp() {
     }, 30000);
 
     return () => window.clearInterval(timer);
-  }, [activeTab, isSuperAdmin, authUser?.id]);
+  }, [activeTab, isSuperAdmin, authUser?.id, analyticsRange.startDate, analyticsRange.endDate]);
 
   useEffect(() => {
     const selectedTab = tabs.find((tab) => tab.key === activeTab);
@@ -2006,6 +2033,9 @@ export function AdminApp() {
           {activeTab === 'analytics' && isSuperAdmin && (
             <AnalyticsPanel
               visits={pageVisits}
+              range={analyticsRange}
+              setRange={setAnalyticsRange}
+              onResetRange={() => setAnalyticsRange(getDefaultAnalyticsRange())}
               updatedAt={analyticsUpdatedAt}
               isRefreshing={isAnalyticsRefreshing}
               onRefresh={loadAnalyticsData}
@@ -2407,45 +2437,67 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function AnalyticsPanel({
   visits,
+  range,
+  setRange,
+  onResetRange,
   updatedAt,
   isRefreshing,
   onRefresh,
 }: {
   visits: PageVisit[];
+  range: { startDate: string; endDate: string };
+  setRange: (range: { startDate: string; endDate: string }) => void;
+  onResetRange: () => void;
   updatedAt: Date | null;
   isRefreshing: boolean;
   onRefresh: () => void;
 }) {
-  const dailyTrend = buildDailyTrend(visits);
+  const dailyTrend = buildDailyTrend(visits, range);
   const deviceData = buildCountData(visits.map((visit) => visit.device_type || 'unknown'));
   const locationData = buildCountData(visits.map((visit) => formatVisitLocation(visit))).slice(0, 8);
   const topPages = buildCountData(visits.map((visit) => visit.path || '/')).slice(0, 8);
   const mobileCount = visits.filter((visit) => visit.device_type === 'mobile' || visit.device_type === 'tablet').length;
   const desktopCount = visits.filter((visit) => visit.device_type === 'desktop').length;
+  const rangeLabel = range.startDate && range.endDate ? `${range.startDate} to ${range.endDate}` : `Last ${defaultAnalyticsDays} days`;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 rounded-lg border border-border bg-white p-4 md:flex-row md:items-center md:justify-between">
-        <div>
+      <div className="rounded-lg border border-border bg-white p-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+          <div>
           <p className="text-sm font-semibold text-foreground">Live analytics data</p>
           <p className="mt-1 text-sm text-foreground/55">
-            Auto-refreshes every 30 seconds while this tab is open.
+            Showing {rangeLabel}. Auto-refreshes every 30 seconds while this tab is open.
             {updatedAt ? ` Last updated ${updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}.` : ''}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          className="flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/70 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          {isRefreshing ? 'Refreshing' : 'Refresh Data'}
-        </button>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(150px,1fr)_minmax(150px,1fr)_auto_auto]">
+            <Input label="Start date" value={range.startDate} onChange={(value) => setRange({ ...range, startDate: value })} type="date" />
+            <Input label="End date" value={range.endDate} onChange={(value) => setRange({ ...range, endDate: value })} type="date" />
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Search className="h-4 w-4" />
+              Search
+            </button>
+            <button
+              type="button"
+              onClick={onResetRange}
+              disabled={isRefreshing}
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground/70 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              90 days
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Metric label="Visits, Last 90 Days" value={String(visits.length)} />
+        <Metric label="Visits in Range" value={String(visits.length)} />
         <Metric label="Mobile / Tablet" value={String(mobileCount)} />
         <Metric label="Desktop" value={String(desktopCount)} />
         <Metric label="Locations" value={String(locationData.length)} />
@@ -3673,13 +3725,17 @@ function adminClampStyle(lines: number) {
   } as const;
 }
 
-function buildDailyTrend(visits: PageVisit[]) {
+function buildDailyTrend(visits: PageVisit[], range: { startDate: string; endDate: string }) {
   const days = new Map<string, number>();
+  const { startDate, endDate } = getAnalyticsBounds(range);
+  const cursor = new Date(startDate);
+  cursor.setHours(0, 0, 0, 0);
+  const finalDate = new Date(endDate);
+  finalDate.setHours(0, 0, 0, 0);
 
-  for (let index = 29; index >= 0; index -= 1) {
-    const date = new Date();
-    date.setDate(date.getDate() - index);
-    days.set(date.toISOString().slice(0, 10), 0);
+  while (cursor <= finalDate) {
+    days.set(cursor.toISOString().slice(0, 10), 0);
+    cursor.setDate(cursor.getDate() + 1);
   }
 
   visits.forEach((visit) => {
