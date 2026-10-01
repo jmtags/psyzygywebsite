@@ -31,6 +31,15 @@ const branches = [
     facebookUrl: 'https://web.facebook.com/PsyzygyCalapan',
     index: '03',
   },
+  {
+    name: 'Bulacan',
+    city: 'Calumpit, Bulacan',
+    address: 'Unit 9, 2nd Floor, Villares Commercial Building, Paseo 3, La Residencia Pio Cruzcosa, Calumpit, Bulacan',
+    mapQuery: 'Unit 9, 2nd Floor, Villares Commercial Building, Paseo 3, La Residencia Pio Cruzcosa, Calumpit, Bulacan',
+    phone: '0992 626 7721',
+    emails: ['psyzygybulacan@gmail.com'],
+    index: '04',
+  },
 ];
 
 export function Branches() {
@@ -51,7 +60,7 @@ export function Branches() {
               className="text-4xl sm:text-5xl font-normal text-foreground leading-[1.15]"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Three branches,
+              Four branches,
               <br />
               <em className="italic text-primary">one commitment.</em>
             </h2>
@@ -65,7 +74,7 @@ export function Branches() {
         </div>
 
         {/* Branch cards */}
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-6">
           {branches.map((branch) => (
             <div
               key={branch.name}
@@ -135,18 +144,20 @@ export function Branches() {
                     ))}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <ExternalLink className="w-4 h-4 text-primary/50 flex-shrink-0" strokeWidth={1.5} />
-                  <a
-                    href={branch.facebookUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-sm text-foreground/65 hover:text-primary transition-colors font-light"
-                    style={{ fontFamily: 'var(--font-body)' }}
-                  >
-                    Facebook page
-                  </a>
-                </div>
+                {branch.facebookUrl ? (
+                  <div className="flex items-center gap-3">
+                    <ExternalLink className="w-4 h-4 text-primary/50 flex-shrink-0" strokeWidth={1.5} />
+                    <a
+                      href={branch.facebookUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-foreground/65 hover:text-primary transition-colors font-light"
+                      style={{ fontFamily: 'var(--font-body)' }}
+                    >
+                      Facebook page
+                    </a>
+                  </div>
+                ) : null}
               </div>
 
               {/* Map */}

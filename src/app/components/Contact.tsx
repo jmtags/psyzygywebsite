@@ -34,6 +34,15 @@ const contacts = [
       { icon: ExternalLink, text: 'Facebook page', link: 'https://web.facebook.com/PsyzygyCalapan', external: true },
     ],
   },
+  {
+    branch: 'Bulacan',
+    subtitle: 'Calumpit, Bulacan',
+    details: [
+      { icon: MapPin, text: 'Unit 9, 2nd Floor, Villares Commercial Building, Paseo 3, La Residencia Pio Cruzcosa, Calumpit, Bulacan' },
+      { icon: Phone, text: '0992 626 7721', link: 'tel:09926267721' },
+      { icon: Mail, text: 'psyzygybulacan@gmail.com', link: 'mailto:psyzygybulacan@gmail.com' },
+    ],
+  },
 ];
 
 export function Contact() {
@@ -80,7 +89,7 @@ export function Contact() {
         </div>
 
         {/* Contact cards */}
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-6">
           {contacts.map((contact, i) => (
             <div
               key={i}
