@@ -41,6 +41,7 @@ const contacts = [
       { icon: MapPin, text: 'Unit 9, 2nd Floor, Villares Commercial Building, Paseo 3, La Residencia Pio Cruzcosa, Calumpit, Bulacan' },
       { icon: Phone, text: '0992 626 7721', link: 'tel:09926267721' },
       { icon: Mail, text: 'psyzygybulacan@gmail.com', link: 'mailto:psyzygybulacan@gmail.com' },
+      { icon: ExternalLink, text: 'Facebook page', link: 'https://www.facebook.com/profile.php?id=61550534484963', external: true },
     ],
   },
 ];

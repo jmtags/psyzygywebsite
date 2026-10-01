@@ -38,6 +38,7 @@ const branches = [
     mapQuery: 'Unit 9, 2nd Floor, Villares Commercial Building, Paseo 3, La Residencia Pio Cruzcosa, Calumpit, Bulacan',
     phone: '0992 626 7721',
     emails: ['psyzygybulacan@gmail.com'],
+    facebookUrl: 'https://www.facebook.com/profile.php?id=61550534484963',
     index: '04',
   },
 ];
